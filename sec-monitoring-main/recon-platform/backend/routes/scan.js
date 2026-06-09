@@ -9,6 +9,11 @@ const { runWebTechFingerprint }= require('../modules/webTechFingerprint');
 const { runVulnAssessment }    = require('../modules/vulnAssessment');
 const { runWapitiScan }        = require('../modules/wapitiscan');
 const { runCMSVulnScan }       = require('../modules/cmsVulnScan');
+const { runSSLScan }           = require('../modules/sslScan');
+const { runNucleiChecks }      = require('../modules/nucleiChecks');
+const { runJSSecretScanner }   = require('../modules/jsSecretScanner');
+const { runSubdomainTakeover } = require('../modules/subdomainTakeover');
+const { runWAFDetector }       = require('../modules/wafDetector');
 const { calculateRiskScore }   = require('../utils/riskScoring');
 
 module.exports = (scans, broadcast, alertEngine = null) => {
@@ -22,30 +27,48 @@ module.exports = (scans, broadcast, alertEngine = null) => {
       return res.status(400).json({ error: 'Domain is required' });
     }
 
-    // Basic domain validation
-    const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-    if (!domainRegex.test(domain)) {
-      return res.status(400).json({ error: 'Invalid domain format' });
+    // Sanitize: strip protocol, port, path, query string, fragment
+    // Accepts: https://example.com, example.com:8080/path, www.example.com/page?q=1 etc.
+    let cleanDomain = domain.trim();
+    if (/^https?:\/\//i.test(cleanDomain)) {
+      try { cleanDomain = new URL(cleanDomain).hostname; } catch (_) {
+        cleanDomain = cleanDomain.replace(/^https?:\/\//i, '');
+      }
     }
+    cleanDomain = cleanDomain.replace(/[/:?#].*$/, '').toLowerCase().trim();
+
+    // Basic domain validation (after cleaning)
+    const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+    if (!domainRegex.test(cleanDomain)) {
+      return res.status(400).json({ error: 'Invalid domain format. Please enter a domain like: example.com' });
+    }
+
+    // Use the cleaned domain from here on
+    const domain_ = cleanDomain;
 
     const scanId = uuidv4();
     const scan = {
       id: scanId,
-      domain,
+      domain: domain_,
       status: 'running',
       progress: 0,
       startedAt: new Date().toISOString(),
       completedAt: null,
       modules: {
-        whoisLookup:       { status: 'pending', data: null },
-        assetDiscovery:    { status: 'pending', data: null },
-        dnsAssessment:     { status: 'pending', data: null },
-        portScan:          { status: 'pending', data: null },
-        serviceFingerprint:{ status: 'pending', data: null },
-        webTechFingerprint:{ status: 'pending', data: null },
-        vulnAssessment:    { status: 'pending', data: null },
-        wapitiscan:        { status: 'pending', data: null },
-        cmsVulnScan:       { status: 'pending', data: null },
+        whoisLookup:        { status: 'pending', data: null },
+        assetDiscovery:     { status: 'pending', data: null },
+        sslScan:            { status: 'pending', data: null },
+        dnsAssessment:      { status: 'pending', data: null },
+        portScan:           { status: 'pending', data: null },
+        serviceFingerprint: { status: 'pending', data: null },
+        webTechFingerprint: { status: 'pending', data: null },
+        wafDetector:        { status: 'pending', data: null },
+        vulnAssessment:     { status: 'pending', data: null },
+        nucleiChecks:       { status: 'pending', data: null },
+        jsSecretScanner:    { status: 'pending', data: null },
+        subdomainTakeover:  { status: 'pending', data: null },
+        wapitiscan:         { status: 'pending', data: null },
+        cmsVulnScan:        { status: 'pending', data: null },
       },
       findings: [],
       riskScore: null,
@@ -56,7 +79,7 @@ module.exports = (scans, broadcast, alertEngine = null) => {
     res.json({ scanId, status: 'started' });
 
     // Run modules asynchronously
-    runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine);
+    runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine);
   });
 
   // Compare two completed scans — GET /api/scan/compare?a=id1&b=id2
@@ -136,8 +159,8 @@ function withTimeout(promise, timeMs, label) {
   });
 }
 
-const MODULE_TIMEOUT = 90000;  // 90 seconds per module
-const GLOBAL_TIMEOUT = 300000; // 5 minutes for the entire scan
+const MODULE_TIMEOUT = 120000; // 2 minutes per module
+const GLOBAL_TIMEOUT = 600000; // 10 minutes for the entire scan
 
 async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine) {
   const emit = (event, data) => {
@@ -150,15 +173,43 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   };
 
   const moduleList = [
-    { key: 'whoisLookup',       label: 'WHOIS & IP Intel',         runner: runWhoisLookup,         weight: 10 },
-    { key: 'assetDiscovery',    label: 'Asset Discovery',          runner: runAssetDiscovery,      weight: 11 },
-    { key: 'dnsAssessment',     label: 'DNS Assessment',           runner: runDNSAssessment,        weight: 11 },
-    { key: 'portScan',          label: 'Port Scanning',            runner: runPortScan,             weight: 12 },
-    { key: 'serviceFingerprint',label: 'Service Fingerprinting',   runner: runServiceFingerprint,   weight: 12 },
-    { key: 'webTechFingerprint',label: 'Web Tech Fingerprinting',  runner: runWebTechFingerprint,   weight: 11 },
-    { key: 'vulnAssessment',    label: 'Vulnerability Assessment', runner: runVulnAssessment,       weight: 11 },
-    { key: 'wapitiscan',        label: 'Active Web Attacks',       runner: runWapitiScan,           weight: 11 },
-    { key: 'cmsVulnScan',       label: 'CMS Vulnerability Scan',  runner: runCMSVulnScan,          weight: 11 },
+    { key: 'whoisLookup',       label: 'WHOIS & IP Intel',         runner: runWhoisLookup,         weight: 9 },
+    { key: 'assetDiscovery',    label: 'Asset Discovery',          runner: runAssetDiscovery,      weight: 10 },
+    // SSL scan runs after asset discovery so it can reuse the discovered subdomains
+    {
+      key: 'sslScan',
+      label: 'SSL/TLS Certificate Scan',
+      weight: 10,
+      runner: (domain, onProgress) => {
+        // Pull subdomains discovered by the assetDiscovery module at runtime
+        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        return runSSLScan(domain, onProgress, subdomains);
+      },
+    },
+    { key: 'dnsAssessment',     label: 'DNS Assessment',           runner: runDNSAssessment,        weight: 10 },
+    { key: 'portScan',          label: 'Port Scanning',            runner: runPortScan,             weight: 11 },
+    { key: 'serviceFingerprint',label: 'Service Fingerprinting',   runner: runServiceFingerprint,   weight: 11 },
+    { key: 'webTechFingerprint',label: 'Web Tech Fingerprinting',  runner: runWebTechFingerprint,   weight: 10 },
+    {
+      key: 'wafDetector',
+      label: 'WAF / CDN Detection',
+      weight: 8,
+      runner: (domain, onProgress) => runWAFDetector(domain, onProgress),
+    },
+    { key: 'vulnAssessment',    label: 'Vulnerability Assessment', runner: runVulnAssessment,       weight: 10 },
+    { key: 'nucleiChecks',      label: 'Nuclei-style Checks',      runner: runNucleiChecks,         weight: 10 },
+    { key: 'jsSecretScanner',   label: 'JavaScript Secret Scanner',runner: runJSSecretScanner,      weight: 9 },
+    {
+      key: 'subdomainTakeover',
+      label: 'Subdomain Takeover Check',
+      weight: 9,
+      runner: (domain, onProgress) => {
+        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        return runSubdomainTakeover(domain, onProgress, subdomains);
+      },
+    },
+    { key: 'wapitiscan',        label: 'Active Web Attacks',       runner: runWapitiScan,           weight: 10 },
+    { key: 'cmsVulnScan',       label: 'CMS Vulnerability Scan',  runner: runCMSVulnScan,          weight: 9 },
   ];
 
   // Global scan timeout — ensures scan ALWAYS finishes
@@ -233,6 +284,7 @@ function buildSummary(scan) {
   const { modules } = scan;
   const whois  = modules.whoisLookup?.data;
   const assets = modules.assetDiscovery?.data;
+  const ssl    = modules.sslScan?.data;
   const dns    = modules.dnsAssessment?.data;
   const ports  = modules.portScan?.data;
   const services = modules.serviceFingerprint?.data;
@@ -266,5 +318,10 @@ function buildSummary(scan) {
     registrar:            whois?.registrar || null,
     daysUntilExpiry:      whois?.daysUntilExpiry ?? null,
     ipCount:              whois?.ipGeo?.length || 0,
+    // SSL
+    sslScanned:           ssl?.summary?.total || 0,
+    sslExpired:           ssl?.summary?.expired || 0,
+    sslExpiring:          ssl?.summary?.expiring || 0,
+    sslValid:             ssl?.summary?.valid || 0,
   };
 }

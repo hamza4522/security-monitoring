@@ -299,7 +299,13 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
   const [error, setError] = useState("");
 
   const handleScan = async () => {
-    const d = domain.trim().replace(/^https?:\/\//, "");
+    // Strip protocol, port, path, query string, fragment — accept any URL form
+    let raw = domain.trim();
+    if (/^https?:\/\//i.test(raw)) {
+      try { raw = new URL(raw).hostname; } catch (_) { raw = raw.replace(/^https?:\/\//i, ""); }
+    }
+    // Also strip port (:8080), paths (/...), query (?...), fragment (#...)
+    const d = raw.replace(/[/:?#].*$/, "").toLowerCase().trim();
     if (!d) return;
     setScanning(true); setError("");
     try {
@@ -350,7 +356,7 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
           </div>
           {error && <div className="scan-error">{error}</div>}
           <div className="scan-hint">
-            Modules: 🌐 WHOIS &amp; IP · Asset Discovery · DNS &amp; Email · Port Scan · Service Fingerprint · Web Tech · Vuln Assessment · ⚔ Active Web Attacks (XSS / SQLi / CMDi / LFI)
+            Modules: 🌐 WHOIS &amp; IP · Asset Discovery (subdomains) · 🔒 SSL/TLS (all subdomains) · DNS &amp; Email · Port Scan · Service Fingerprint · Web Tech · Vuln Assessment · ⚔ Active Web Attacks (XSS / SQLi / CMDi / LFI)
           </div>
         </div>
       </div>
@@ -475,14 +481,38 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
 
 // ── Scan View ─────────────────────────────────────────────────────────────────
 function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
+  const sslData = scan.modules?.sslScan?.data;
+  const sslBadge = sslData?.summary?.expired > 0
+    ? ` 🔴${sslData.summary.expired}`
+    : sslData?.summary?.expiring > 0
+    ? ` 🟡${sslData.summary.expiring}`
+    : "";
+
+  const nucleiData = scan.modules?.nucleiChecks?.data;
+  const nucleiBadge = nucleiData?.summary?.totalIssues > 0 ? ` (${nucleiData.summary.totalIssues})` : "";
+
+  const jsData = scan.modules?.jsSecretScanner?.data;
+  const jsBadge = jsData?.summary?.totalIssues > 0 ? ` 🔑${jsData.summary.totalIssues}` : "";
+
+  const takeoverData = scan.modules?.subdomainTakeover?.data;
+  const takeoverBadge = takeoverData?.summary?.vulnerable > 0 ? ` ⚠️${takeoverData.summary.vulnerable}` : "";
+
+  const wafData = scan.modules?.wafDetector?.data;
+  const wafBadge = wafData?.isProtected ? ` 🛡️` : "";
+
   const tabs = [
     { id: "overview",    label: "Overview" },
     { id: "whois",       label: "🌐 WHOIS & IP" },
     { id: "assets",      label: "Assets" },
+    { id: "ssl",         label: `🔒 SSL/TLS${sslBadge}` },
     { id: "dns",         label: "DNS & Email" },
     { id: "ports",       label: "Ports" },
     { id: "services",    label: "Services" },
     { id: "webtech",     label: "Web Tech" },
+    { id: "waf",         label: `WAF/CDN${wafBadge}` },
+    { id: "nuclei",      label: `🎯 Nuclei${nucleiBadge}` },
+    { id: "secrets",     label: `JS Secrets${jsBadge}` },
+    { id: "takeover",    label: `Takeover${takeoverBadge}` },
     { id: "webattacks",  label: `⚔ Web Attacks ${scan.modules?.wapitiscan?.data?.findings?.length ? `(${scan.modules.wapitiscan.data.findings.length})` : ""}` },
     { id: "cms",         label: `🏛 CMS ${scan.modules?.cmsVulnScan?.data?.findings?.length ? `(${scan.modules.cmsVulnScan.data.findings.length})` : ""}` },
     { id: "findings",    label: `Findings ${scan.findings?.length ? `(${scan.findings.length})` : ""}` },
@@ -538,10 +568,15 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
         {activeTab === "overview"    && <OverviewTab scan={scan} />}
         {activeTab === "whois"       && <WhoisTab data={scan.modules?.whoisLookup?.data} status={scan.modules?.whoisLookup?.status} />}
         {activeTab === "assets"      && <AssetsTab data={scan.modules?.assetDiscovery?.data} />}
+        {activeTab === "ssl"         && <SSLScanTab data={scan.modules?.sslScan?.data} status={scan.modules?.sslScan?.status} />}
         {activeTab === "dns"         && <DNSTab data={scan.modules?.dnsAssessment?.data} />}
         {activeTab === "ports"       && <PortsTab data={scan.modules?.portScan?.data} />}
         {activeTab === "services"    && <ServicesTab data={scan.modules?.serviceFingerprint?.data} />}
         {activeTab === "webtech"     && <WebTechTab data={scan.modules?.webTechFingerprint?.data} />}
+        {activeTab === "waf"         && <WAFDetectorTab data={scan.modules?.wafDetector?.data} status={scan.modules?.wafDetector?.status} />}
+        {activeTab === "nuclei"      && <NucleiChecksTab data={scan.modules?.nucleiChecks?.data} status={scan.modules?.nucleiChecks?.status} />}
+        {activeTab === "secrets"     && <JSSecretTab data={scan.modules?.jsSecretScanner?.data} status={scan.modules?.jsSecretScanner?.status} />}
+        {activeTab === "takeover"    && <TakeoverTab data={scan.modules?.subdomainTakeover?.data} status={scan.modules?.subdomainTakeover?.status} />}
         {activeTab === "webattacks"  && <WebAttacksTab data={scan.modules?.wapitiscan?.data} status={scan.modules?.wapitiscan?.status} />}
         {activeTab === "cms"         && <CMSScanTab data={scan.modules?.cmsVulnScan?.data} status={scan.modules?.cmsVulnScan?.status} />}
         {activeTab === "findings"    && <FindingsTab findings={scan.findings} />}
@@ -555,12 +590,17 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
 function ModulePipeline({ modules }) {
   const MODULES = [
     { key: "whoisLookup",       label: "WHOIS & IP" },
-    { key: "assetDiscovery",     label: "Asset Discovery" },
+    { key: "assetDiscovery",     label: "Assets" },
+    { key: "sslScan",            label: "SSL/TLS" },
     { key: "dnsAssessment",      label: "DNS & Email" },
     { key: "portScan",           label: "Port Scan" },
     { key: "serviceFingerprint", label: "Services" },
     { key: "webTechFingerprint", label: "Web Tech" },
+    { key: "wafDetector",        label: "WAF/CDN" },
     { key: "vulnAssessment",     label: "Vuln Assess" },
+    { key: "nucleiChecks",       label: "Nuclei" },
+    { key: "jsSecretScanner",    label: "JS Secrets" },
+    { key: "subdomainTakeover",  label: "Takeover" },
     { key: "wapitiscan",         label: "Web Attacks" },
     { key: "cmsVulnScan",        label: "CMS Scan" },
   ];
@@ -621,6 +661,9 @@ function OverviewTab({ scan }) {
             <SummaryItem label="Services" value={summary.exposedServices} />
             <SummaryItem label="Technologies" value={summary.technologies} />
             <SummaryItem label="DNS Issues" value={summary.dnsIssues} accent={summary.dnsIssues > 0} />
+            <SummaryItem label="SSL Scanned" value={summary.sslScanned || 0} />
+            <SummaryItem label="SSL Expired" value={summary.sslExpired || 0} accent={summary.sslExpired > 0} />
+            <SummaryItem label="SSL Expiring" value={summary.sslExpiring || 0} accent={summary.sslExpiring > 0} />
             <SummaryItem label="Active Probes" value={summary.activeProbes || 0} />
             <SummaryItem label="Attack Findings" value={summary.activeAttackFindings || 0} accent={summary.activeAttackFindings > 0} />
           </div>
@@ -859,6 +902,283 @@ function WebTechTab({ data }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── SSL/TLS Scan Tab ──────────────────────────────────────────────────────────
+function SSLScanTab({ data, status }) {
+  const fmtDate = (d) => {
+    if (!d) return "—";
+    try { return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
+    catch (_) { return d; }
+  };
+
+  if (status === "pending" || !data) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🔒</div>
+        <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>SSL/TLS Certificate Scan Pending</div>
+        <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+          Certificate data for the main domain and all discovered subdomains will appear here.
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "running") {
+    return (
+      <div className="empty-state">
+        <span className="spinner" style={{ width: 32, height: 32, marginBottom: "1rem" }} />
+        <div style={{ fontWeight: 600 }}>Scanning SSL Certificates...</div>
+        <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+          Checking all discovered subdomains for certificate validity and expiry
+        </div>
+      </div>
+    );
+  }
+
+  const { hosts = [], summary = {} } = data;
+
+  const STATUS_CONFIG = {
+    valid:    { label: "Valid",    color: "#22c55e", bg: "rgba(34,197,94,0.12)",  icon: "✓" },
+    expiring: { label: "Expiring", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", icon: "⚠" },
+    expired:  { label: "Expired",  color: "#e11d48", bg: "rgba(225,29,72,0.12)",  icon: "✗" },
+    no_ssl:   { label: "No SSL",   color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "—" },
+    error:    { label: "Error",    color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "?" },
+  };
+
+  return (
+    <div className="tab-sections">
+      {/* Summary row */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header">🔒 SSL/TLS Certificate Overview</div>
+        <div className="summary-grid" style={{ padding: "12px 16px" }}>
+          {[
+            { label: "Hosts Scanned", value: summary.total  || 0, color: null },
+            { label: "Valid",          value: summary.valid   || 0, color: "#22c55e" },
+            { label: "Expiring Soon",  value: summary.expiring|| 0, color: "#f59e0b" },
+            { label: "Expired",        value: summary.expired || 0, color: "#e11d48" },
+            { label: "No SSL",         value: summary.noSSL   || 0, color: "#6b7280" },
+          ].map(item => (
+            <div key={item.label} className="summary-item">
+              <span className="summary-value" style={item.color ? { color: item.color } : {}}>{item.value}</span>
+              <span className="summary-label">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Per-host certificate table */}
+      <div className="card">
+        <div className="card-header">Certificate Details — All Hosts ({hosts.length})</div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Status</th>
+                <th>Days Left</th>
+                <th>Expiry Date</th>
+                <th>Issuer</th>
+                <th>Protocol</th>
+                <th>Subject / CN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hosts.map((h, i) => {
+                const cfg = STATUS_CONFIG[h.status] || STATUS_CONFIG.error;
+                const daysLeftColor =
+                  h.daysLeft === null ? "var(--text-muted)"
+                  : h.daysLeft < 0   ? "#e11d48"
+                  : h.daysLeft <= 7  ? "#e11d48"
+                  : h.daysLeft <= 30 ? "#f59e0b"
+                  : "#22c55e";
+
+                return (
+                  <tr key={i}>
+                    <td>
+                      <a href={`https://${h.host}`} target="_blank" rel="noreferrer"
+                         style={{ color: "#60a5fa", fontFamily: "monospace", fontSize: 12 }}>
+                        {h.host}
+                      </a>
+                    </td>
+                    <td>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "2px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600,
+                        background: cfg.bg, color: cfg.color,
+                      }}>
+                        {cfg.icon} {cfg.label}
+                      </span>
+                    </td>
+                    <td style={{ color: daysLeftColor, fontWeight: 600, fontFamily: "monospace" }}>
+                      {h.daysLeft === null ? "—"
+                       : h.daysLeft < 0   ? `Expired ${Math.abs(h.daysLeft)}d ago`
+                       : `${h.daysLeft}d`}
+                    </td>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(h.validTo)}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {h.selfSigned
+                        ? <span style={{ color: "#f59e0b", fontWeight: 600 }}>⚠ Self-Signed</span>
+                        : h.issuer || "—"}
+                    </td>
+                    <td>
+                      {h.protocol ? (
+                        <code style={{
+                          fontSize: 11,
+                          color: (h.protocol === "TLSv1" || h.protocol === "TLSv1.1") ? "#f59e0b" : "#22c55e",
+                        }}>
+                          {h.protocol}
+                        </code>
+                      ) : "—"}
+                    </td>
+                    <td style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-muted)" }}>
+                      {h.subject || h.error || "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SAN list for any host with SANs */}
+      {hosts.filter(h => h.san?.length > 0).map(h => (
+        <div key={h.host} className="card" style={{ marginTop: 12 }}>
+          <div className="card-header">📜 Subject Alternative Names — {h.host} ({h.san.length})</div>
+          <div className="scrollable-list">
+            {h.san.map((s, i) => (
+              <div key={i} className="list-item" style={{ fontFamily: "monospace", fontSize: 12 }}>
+                <span className="list-dot" />
+                {s}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Nuclei Checks Tab ─────────────────────────────────────────────────────────
+function NucleiChecksTab({ data, status }) {
+  const SEV_COLOR = {
+    critical: { bg: "rgba(225,29,72,0.12)",  color: "#e11d48", label: "CRITICAL" },
+    high:     { bg: "rgba(239,68,68,0.12)",  color: "#ef4444", label: "HIGH" },
+    medium:   { bg: "rgba(245,158,11,0.12)", color: "#f59e0b", label: "MEDIUM" },
+    low:      { bg: "rgba(34,197,94,0.1)",   color: "#22c55e", label: "LOW" },
+    info:     { bg: "rgba(96,165,250,0.1)",  color: "#60a5fa", label: "INFO" },
+  };
+
+  if (status === "pending" || !data) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🎯</div>
+        <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Nuclei-style Checks Pending</div>
+        <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+          Template-based security checks (25 panels, 13 CVE probes, misconfigs, API issues) will appear here.
+        </div>
+      </div>
+    );
+  }
+  if (status === "running") {
+    return (
+      <div className="empty-state">
+        <span className="spinner" style={{ width: 32, height: 32, marginBottom: "1rem" }} />
+        <div style={{ fontWeight: 600 }}>Running Nuclei-style Template Checks...</div>
+        <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+          Checking panels, CVE probes, tech misconfigs, API issues
+        </div>
+      </div>
+    );
+  }
+
+  const { findings = [], summary = {}, panelsFound = [], cveProbeHits = [] } = data;
+
+  const grouped = findings.reduce((acc, f) => {
+    const cat = f.id?.startsWith("NUCLEI-PANEL") ? "Exposed Panels"
+      : f.id?.startsWith("NUCLEI-CVE")   ? "CVE Probes"
+      : f.id?.startsWith("NUCLEI-PHP") || f.id?.startsWith("NUCLEI-EXPRESS") || f.id?.startsWith("NUCLEI-SOURCEMAP") || f.id?.startsWith("NUCLEI-WERKZEUG") || f.id?.startsWith("NUCLEI-DJANGO") || f.id?.startsWith("NUCLEI-ACTUATOR") ? "Tech Misconfigs"
+      : "API & Other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(f);
+    return acc;
+  }, {});
+
+  const catIcons = {
+    "Exposed Panels": "🖥️",
+    "CVE Probes":     "💀",
+    "Tech Misconfigs":"⚙️",
+    "API & Other":    "🔌",
+  };
+
+  return (
+    <div className="tab-sections">
+      {/* Summary row */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header">🎯 Nuclei-style Check Results</div>
+        <div className="summary-grid" style={{ padding: "12px 16px" }}>
+          {[
+            { label: "Panels Checked", value: summary.panelsChecked || 0, color: null },
+            { label: "Panels Found",   value: summary.panelsFound   || 0, color: summary.panelsFound > 0 ? "#e11d48" : "#22c55e" },
+            { label: "CVE Probes Run", value: summary.cveProbes     || 0, color: null },
+            { label: "CVE Hits",       value: summary.cveHits       || 0, color: summary.cveHits > 0 ? "#e11d48" : "#22c55e" },
+            { label: "Tech Issues",    value: summary.techMisconfigs|| 0, color: summary.techMisconfigs > 0 ? "#f59e0b" : null },
+            { label: "API Issues",     value: summary.apiIssues     || 0, color: summary.apiIssues > 0 ? "#f59e0b" : null },
+            { label: "Total Issues",   value: summary.totalIssues   || 0, color: summary.totalIssues > 0 ? "#e11d48" : "#22c55e" },
+          ].map(item => (
+            <div key={item.label} className="summary-item">
+              <span className="summary-value" style={item.color ? { color: item.color } : {}}>{item.value}</span>
+              <span className="summary-label">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {findings.length === 0 ? (
+        <div className="card" style={{ padding: "2rem", textAlign: "center" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>✅</div>
+          <div style={{ fontWeight: 600, color: "#22c55e" }}>No Issues Found</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+            All {(summary.panelsChecked || 0) + (summary.cveProbes || 0)} checks passed with no findings.
+          </div>
+        </div>
+      ) : (
+        Object.entries(grouped).map(([cat, items]) => (
+          <div key={cat} className="card" style={{ marginBottom: 14 }}>
+            <div className="card-header">{catIcons[cat] || "🔍"} {cat} ({items.length})</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 16px" }}>
+              {items.map((f, i) => {
+                const sc = SEV_COLOR[f.severity] || SEV_COLOR.info;
+                return (
+                  <div key={i} style={{
+                    background: "rgba(255,255,255,0.03)", border: `1px solid rgba(255,255,255,0.06)`,
+                    borderLeft: `3px solid ${sc.color}`, borderRadius: 8, padding: "12px 14px",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                      <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, letterSpacing: "0.05em" }}>{sc.label}</span>
+                      <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{f.title}</span>
+                    </div>
+                    <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: 1.5, marginBottom: 6 }}>{f.description}</div>
+                    {f.affected && (
+                      <div style={{ marginBottom: 6 }}>
+                        <a href={f.affected} target="_blank" rel="noreferrer" style={{ color: "#60a5fa", fontFamily: "monospace", fontSize: 11 }}>{f.affected}</a>
+                      </div>
+                    )}
+                    {f.remediation && (
+                      <div style={{ background: "rgba(34,197,94,0.08)", borderRadius: 6, padding: "6px 10px", fontSize: "0.8rem", color: "#86efac", borderLeft: "2px solid #22c55e" }}>
+                        <span style={{ fontWeight: 600 }}>Fix: </span>{f.remediation}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -1566,6 +1886,251 @@ function SummaryItem({ label, value, accent }) {
     <div className={`summary-item ${accent ? "accent" : ""}`}>
       <span className="summary-num">{value}</span>
       <span className="summary-label">{label}</span>
+    </div>
+  );
+}
+
+// ── WAF/CDN Detector Tab ──────────────────────────────────────────────────────
+function WAFDetectorTab({ data, status }) {
+  const [expanded, setExpanded] = useState(null);
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🛡️</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>WAF/CDN Detection Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Will run after Asset Discovery.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Fingerprinting Security Infrastructure...</div>
+    </div>
+  );
+
+  const { detected = [], behaviorBlocked = [], isProtected, summary = {} } = data;
+
+  return (
+    <div className="tab-sections">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
+        <StatCard label="WAFs Detected" value={summary.wafCount} accent={summary.wafCount > 0 ? "success" : ""} />
+        <StatCard label="CDNs Detected" value={summary.cdnCount} accent={summary.cdnCount > 0 ? "success" : ""} />
+        <StatCard label="Load Balancers" value={summary.lbCount} />
+        <StatCard label="Payloads Blocked" value={`${summary.blocked}/${summary.behaviorTests}`} accent={summary.blocked > 0 ? "success" : "danger"} />
+      </div>
+
+      <div className="card">
+        <div className="card-header">🛡 Detected Infrastructure</div>
+        {detected.length === 0 ? (
+          <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>
+            No WAF, CDN, or Load Balancer products were fingerprinted.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px", background: "var(--border-color)" }}>
+            {detected.map((d, i) => (
+              <div key={i} style={{ background: "var(--bg-card)", padding: "16px", display: "flex", alignItems: "flex-start", gap: "16px" }}>
+                <div style={{ fontSize: "2rem", filter: "grayscale(0.5)" }}>
+                  {d.type?.includes("WAF") ? "🧱" : d.type?.includes("CDN") ? "⚡" : "⚖"}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <h3 style={{ margin: 0, fontSize: "16px" }}>{d.name}</h3>
+                    <span style={{ fontSize: "11px", background: "var(--bg-lighter)", padding: "2px 8px", borderRadius: "10px" }}>{d.type}</span>
+                    {d.confidence === "high" && <span style={{ fontSize: "11px", color: "#22c55e", background: "#16653430", padding: "2px 8px", borderRadius: "10px" }}>High Confidence</span>}
+                  </div>
+                  <div style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>{d.sig?.description || d.name}</div>
+                  <div style={{ fontSize: "12px", background: "var(--bg-lighter)", padding: "8px", borderRadius: "4px", color: "#e2e8f0" }}>
+                    <strong>Detection Methods:</strong> {d.methods?.join(", ") || "Header fingerprint"}
+                  </div>
+                  {d.sig?.bypass_hint && (
+                    <div style={{ fontSize: "12px", color: "#60a5fa", marginTop: "8px" }}>💡 <strong>Bypass Hint:</strong> {d.sig.bypass_hint}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-header">🧪 Active Behavior Tests</div>
+        <table className="data-table">
+          <thead><tr><th>Test Payload</th><th>Result</th><th>HTTP Status</th></tr></thead>
+          <tbody>
+            {behaviorBlocked.length === 0 ? (
+              <tr><td colSpan="3" style={{ textAlign: "center", padding: "16px", color: "var(--text-muted)" }}>None of the test payloads were blocked.</td></tr>
+            ) : behaviorBlocked.map((b, i) => (
+              <tr key={i}>
+                <td>{b.test}</td>
+                <td><span className="status-pill error">⚠ BLOCKED</span></td>
+                <td><code>HTTP {b.status}</code></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── JS Secrets Tab ──────────────────────────────────────────────────────────────
+function JSSecretTab({ data, status }) {
+  const [expanded, setExpanded] = useState(null);
+  
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🔑</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>JS Secret Scan Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Will scan discovered JS bundles for secrets.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Analyzing JavaScript files for embedded secrets...</div>
+    </div>
+  );
+
+  const { secrets = [], highEntropyStrings = [], summary = {} } = data;
+
+  return (
+    <div className="tab-sections">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px" }}>
+        <StatCard label="Files Scanned" value={summary.filesScanned} />
+        <StatCard label="Secrets Found" value={summary.secretsFound} accent={summary.secretsFound > 0 ? "danger" : ""} />
+        <StatCard label="High Entropy Hits" value={summary.highEntropyHits} accent={summary.highEntropyHits > 0 ? "warning" : ""} />
+      </div>
+
+      {secrets.length > 0 && (
+        <div className="card">
+          <div className="card-header" style={{ color: "#f87171" }}>🚨 Exposed Secrets ({secrets.length})</div>
+          <div className="findings-list">
+            {secrets.map((s, i) => {
+              const id = `${s.patternId}-${i}`;
+              return (
+                <div key={id} className={`finding-card ${s.severity} ${expanded === id ? "expanded" : ""}`} onClick={() => setExpanded(expanded === id ? null : id)}>
+                  <div className="finding-card-header">
+                    <SeverityBadge severity={s.severity} />
+                    <span className="finding-card-title">{s.name}</span>
+                    <span className="finding-module-tag">{s.patternId}</span>
+                    <span className="expand-icon">{expanded === id ? "▲" : "▼"}</span>
+                  </div>
+                  {expanded === id && (
+                    <div className="finding-card-body">
+                      <div className="finding-section">
+                        <div className="finding-section-label">Masked Value</div>
+                        <code style={{ fontSize: "14px", color: "#f87171" }}>{s.maskedValue}</code>
+                      </div>
+                      <div className="finding-section">
+                        <div className="finding-section-label">Location</div>
+                        <div style={{ fontSize: "13px", wordBreak: "break-all" }}>
+                          <a href={s.fileUrl} target="_blank" rel="noreferrer" style={{ color: "#60a5fa" }}>{s.fileUrl}</a> (Line ~{s.lineNumber})
+                        </div>
+                      </div>
+                      <div className="finding-section">
+                        <div className="finding-section-label">Context snippet</div>
+                        <pre style={{ margin: 0, padding: "8px", background: "var(--bg-main)", borderRadius: "4px", fontSize: "11px", whiteSpace: "pre-wrap", color: "#e2e8f0" }}>
+                          {s.context}
+                        </pre>
+                      </div>
+                      <div className="finding-section remediation">
+                        <div className="finding-section-label">Remediation</div>
+                        {s.fix}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header">🎲 High-Entropy Strings (Possible Secrets)</div>
+        <table className="data-table">
+          <thead><tr><th>Value (Truncated)</th><th>Entropy</th><th>Source</th></tr></thead>
+          <tbody>
+            {highEntropyStrings.length === 0 ? (
+              <tr><td colSpan="3" style={{ textAlign: "center", padding: "16px", color: "var(--text-muted)" }}>No high-entropy strings detected.</td></tr>
+            ) : highEntropyStrings.map((h, i) => (
+              <tr key={i}>
+                <td><code style={{ fontSize: "11px", color: "#d97706" }}>{h.value}</code></td>
+                <td>{h.entropy}</td>
+                <td style={{ fontSize: "11px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.source}>{h.source}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Subdomain Takeover Tab ────────────────────────────────────────────────────
+function TakeoverTab({ data, status }) {
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚠️</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Takeover Scan Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Checking subdomains for dangling CNAMEs.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Analyzing DNS CNAME chains for takeover vulnerabilities...</div>
+    </div>
+  );
+
+  const { checked = [], vulnerable = [], summary = {} } = data;
+
+  return (
+    <div className="tab-sections">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px" }}>
+        <StatCard label="Subdomains Checked" value={summary.checked} />
+        <StatCard label="Services Fingerprints" value={summary.servicesScanned} />
+        <StatCard label="Vulnerable" value={summary.vulnerable} accent={summary.vulnerable > 0 ? "danger" : "success"} />
+      </div>
+
+      {vulnerable.length > 0 && (
+        <div className="card" style={{ border: "1px solid #e11d48" }}>
+          <div className="card-header" style={{ color: "#e11d48", borderBottom: "1px solid #e11d4840" }}>🚨 Vulnerable Subdomains ({vulnerable.length})</div>
+          <table className="data-table">
+            <thead><tr><th>Subdomain</th><th>Service</th><th>CNAME Chain</th></tr></thead>
+            <tbody>
+              {vulnerable.map((v, i) => (
+                <tr key={i} style={{ background: "#e11d4810" }}>
+                  <td style={{ fontWeight: 600 }}>{v.subdomain}</td>
+                  <td><span className="status-pill error">{v.service}</span></td>
+                  <td style={{ fontSize: "11px", color: "var(--text-muted)" }}>{v.cnameChain.join(" → ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header">🔍 Checked CNAME Records</div>
+        <table className="data-table">
+          <thead><tr><th>Subdomain</th><th>Final Target</th><th>Status</th></tr></thead>
+          <tbody>
+            {checked.length === 0 ? (
+              <tr><td colSpan="3" style={{ textAlign: "center", padding: "16px", color: "var(--text-muted)" }}>No subdomains checked.</td></tr>
+            ) : checked.map((c, i) => (
+              <tr key={i}>
+                <td>{c.subdomain}</td>
+                <td style={{ fontSize: "11px" }}>{c.cnameTarget || "—"}</td>
+                <td>
+                  {c.cnameChain?.length < 2 ? <span className="status-pill">No CNAME</span> :
+                   c.targetNXDOMAIN ? <span className="status-pill warning">NXDOMAIN</span> :
+                   <span className="status-pill complete">Resolves (HTTP {c.status})</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -83,6 +83,11 @@ function calculateRiskScore(scan) {
   const hasSpring4 = findings.some(f => f.id?.includes('CVE-2022-22963'));
   if (hasLog4j || hasSpring4) rawScore = Math.max(rawScore, 90);
 
+  // Expired SSL certs on multiple hosts — serious customer impact
+  const sslSummary = scan.modules?.sslScan?.data?.summary || {};
+  if (sslSummary.expired > 0) rawScore += Math.min(sslSummary.expired * 10, 25);
+
+
   const score = Math.min(Math.round(rawScore), MAX_SCORE);
 
   return {
