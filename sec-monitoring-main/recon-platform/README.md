@@ -25,7 +25,8 @@ recon-platform/
 └── frontend/
     └── src/
         ├── App.jsx            # Full React UI — all tabs and views
-        └── App.css            # Dark theme styling
+        ├── App.css            # Layout, animations, and component styles
+        └── theme.css          # Centralized color variables for easy theming
 ```
 
 ---
@@ -153,6 +154,20 @@ Findings are scored by severity and aggregated into a 0–100 risk score:
 | D | 46–60 | High risk |
 | E | 61–75 | Critical |
 | F | 76–100 | Severe |
+
+---
+
+## Customizing the UI (Theming)
+
+The frontend features a highly polished, professional dark/light theme engine built with CSS variables. 
+
+To completely change the app's color scheme (backgrounds, accents, glowing effects, and severity badges), simply edit the centralized CSS tokens in:
+`frontend/src/theme.css`
+
+Changes saved to `theme.css` will hot-reload instantly in the browser. You do not need to hunt through component styles or logic to rebrand the platform.
+
+**Keyboard Shortcuts:**
+Press `?` in the browser at any time to open the quick-actions keyboard shortcut menu.
 
 ---
 
