@@ -200,7 +200,8 @@ export default function App() {
       <Sidebar view={view} setView={setView} scans={scans} onSelectScan={openScan}
         theme={theme} toggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")}
         unreadAlerts={unreadAlerts} onSearch={() => setSearchOpen(true)}
-        compareIds={compareIds} onOpenCompare={() => setView("compare")} />
+        compareIds={compareIds} onOpenCompare={() => setView("compare")}
+        setShortcutsOpen={setShortcutsOpen} />
       <main className="main-content">
         {view === "dashboard" && (
           <DashboardView scans={scans} domainInputRef={domainInputRef} onStartScan={(scan) => { setScans(p => [scan, ...p]); openScan(scan.scanId || scan.id); }} onSelectScan={openScan} />
@@ -227,7 +228,7 @@ export default function App() {
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
-function Sidebar({ view, setView, scans, onSelectScan, theme, toggleTheme, unreadAlerts, onSearch, compareIds, onOpenCompare }) {
+function Sidebar({ view, setView, scans, onSelectScan, theme, toggleTheme, unreadAlerts, onSearch, compareIds, onOpenCompare, setShortcutsOpen }) {
   const running = scans.filter(s => s.status === "running");
   return (
     <aside className="sidebar">

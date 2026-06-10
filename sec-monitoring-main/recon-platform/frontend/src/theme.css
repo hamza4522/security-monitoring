@@ -1,0 +1,60 @@
+/* 
+  ========================================================
+  THEME COLORS & VARIABLES
+  ========================================================
+  Manage all the colors for the application here.
+  Change the hex codes below to update the app's aesthetic.
+*/
+
+:root {
+  /* Backgrounds */
+  --bg-main: #0a0e17;
+  --bg-card: rgba(15, 23, 42, 0.6);
+  --bg-card-hover: rgba(30, 41, 59, 0.7);
+  
+  /* Borders */
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.12);
+  
+  /* Text */
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  
+  /* Accent Colors (Used for buttons, glowing effects, and status indicators) */
+  --accent-blue: #3b82f6;
+  --accent-blue-glow: rgba(59, 130, 246, 0.4);
+  --accent-purple: #8b5cf6;
+  --accent-pink: #d946ef;
+  
+  /* Status Colors */
+  --accent-green: #10b981; /* Success / Low Risk */
+  --accent-orange: #f59e0b; /* Warning / High Risk */
+  --accent-red: #ef4444; /* Error / Critical Risk */
+  
+  /* Effects */
+  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.2);
+  --glass-blur: blur(12px);
+
+  /* Legacy variable for backwards compatibility with any existing components */
+  --card-bg: var(--bg-card); 
+}
+
+/* Light Theme Overrides */
+[data-theme="light"] {
+  --bg-main: #f8fafc;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 1);
+  
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-light: rgba(15, 23, 42, 0.15);
+  
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  
+  --accent-blue: #2563eb;
+  --accent-blue-glow: rgba(37, 99, 235, 0.3);
+  --accent-purple: #7c3aed;
+  --accent-pink: #d946ef;
+  
+  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.05);
+}
