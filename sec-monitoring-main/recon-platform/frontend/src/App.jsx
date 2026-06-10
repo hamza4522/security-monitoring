@@ -623,6 +623,21 @@ function ModulePipeline({ modules }) {
   );
 }
 
+// ── Target Selector ───────────────────────────────────────────────────────────
+function TargetSelector({ rawData, selectedTarget, setSelectedTarget }) {
+  if (!rawData?.multiTarget || !rawData?.targetResults || rawData.targetResults.length <= 1) return null;
+  return (
+    <div className="target-selector">
+      <label>Target Domain:</label>
+      <select value={selectedTarget || ""} onChange={(e) => setSelectedTarget(e.target.value)}>
+        {rawData.targetResults.map(tr => (
+          <option key={tr.domain} value={tr.domain}>{tr.domain}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 function OverviewTab({ scan }) {
   const { summary, findings, riskScore } = scan;
@@ -747,7 +762,11 @@ function AssetsTab({ data }) {
 }
 
 // ── DNS Tab ───────────────────────────────────────────────────────────────────
-function DNSTab({ data }) {
+function DNSTab({ data: rawData }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   if (!data) return <div className="empty-state">DNS assessment pending.</div>;
   const checks = [
     { label: "SPF", pass: data.spf?.present, detail: data.spf?.record || "Not configured" },
@@ -759,6 +778,7 @@ function DNSTab({ data }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div className="card">
         <div className="card-header">Email Security Checks</div>
         <div className="dns-checks">
@@ -789,13 +809,18 @@ function DNSTab({ data }) {
 }
 
 // ── Ports Tab ─────────────────────────────────────────────────────────────────
-function PortsTab({ data }) {
+function PortsTab({ data: rawData }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   if (!data) return <div className="empty-state">Port scan pending.</div>;
   const dangerous = data.exposedDangerousPorts || [];
   const other = (data.openPorts || []).filter(p => !dangerous.find(d => d.port === p.port));
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       {dangerous.length > 0 && (
         <div className="card">
           <div className="card-header danger">⚠ Dangerous Exposures ({dangerous.length})</div>
@@ -835,10 +860,15 @@ function PortsTab({ data }) {
 }
 
 // ── Services Tab ──────────────────────────────────────────────────────────────
-function ServicesTab({ data }) {
+function ServicesTab({ data: rawData }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   if (!data) return <div className="empty-state">Service fingerprinting pending.</div>;
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div className="card">
         <div className="card-header">Identified Services</div>
         <table className="data-table">
@@ -877,7 +907,11 @@ function ServicesTab({ data }) {
 }
 
 // ── Web Tech Tab ──────────────────────────────────────────────────────────────
-function WebTechTab({ data }) {
+function WebTechTab({ data: rawData }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   if (!data) return <div className="empty-state">Web technology fingerprinting pending.</div>;
 
   const byCategory = {};
@@ -888,6 +922,7 @@ function WebTechTab({ data }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div className="tech-grid">
         {Object.entries(byCategory).map(([cat, techs]) => (
           <div key={cat} className="card tech-category">
@@ -1063,7 +1098,11 @@ function SSLScanTab({ data, status }) {
 }
 
 // ── Nuclei Checks Tab ─────────────────────────────────────────────────────────
-function NucleiChecksTab({ data, status }) {
+function NucleiChecksTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   const SEV_COLOR = {
     critical: { bg: "rgba(225,29,72,0.12)",  color: "#e11d48", label: "CRITICAL" },
     high:     { bg: "rgba(239,68,68,0.12)",  color: "#ef4444", label: "HIGH" },
@@ -1116,6 +1155,7 @@ function NucleiChecksTab({ data, status }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       {/* Summary row */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">🎯 Nuclei-style Check Results</div>
@@ -1391,7 +1431,11 @@ const ATTACK_CATEGORY_ICONS = {
   "Security.txt": "📋",
 };
 
-function WebAttacksTab({ data, status }) {
+function WebAttacksTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   const [expandedFinding, setExpandedFinding] = useState(null);
 
   if (status === "pending" || !data) {
@@ -1444,6 +1488,7 @@ function WebAttacksTab({ data, status }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
 
       {/* Responsible use notice */}
       <div className="card" style={{ borderLeft: "4px solid #d97706", background: "var(--card-bg)" }}>
@@ -1891,7 +1936,11 @@ function SummaryItem({ label, value, accent }) {
 }
 
 // ── WAF/CDN Detector Tab ──────────────────────────────────────────────────────
-function WAFDetectorTab({ data, status }) {
+function WAFDetectorTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   const [expanded, setExpanded] = useState(null);
   if (!data || status === "pending") return (
     <div className="empty-state">
@@ -1911,6 +1960,7 @@ function WAFDetectorTab({ data, status }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
         <StatCard label="WAFs Detected" value={summary.wafCount} accent={summary.wafCount > 0 ? "success" : ""} />
         <StatCard label="CDNs Detected" value={summary.cdnCount} accent={summary.cdnCount > 0 ? "success" : ""} />
@@ -1973,7 +2023,11 @@ function WAFDetectorTab({ data, status }) {
 }
 
 // ── JS Secrets Tab ──────────────────────────────────────────────────────────────
-function JSSecretTab({ data, status }) {
+function JSSecretTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   const [expanded, setExpanded] = useState(null);
   
   if (!data || status === "pending") return (
@@ -1994,6 +2048,7 @@ function JSSecretTab({ data, status }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px" }}>
         <StatCard label="Files Scanned" value={summary.filesScanned} />
         <StatCard label="Secrets Found" value={summary.secretsFound} accent={summary.secretsFound > 0 ? "danger" : ""} />
@@ -2067,7 +2122,11 @@ function JSSecretTab({ data, status }) {
 }
 
 // ── Subdomain Takeover Tab ────────────────────────────────────────────────────
-function TakeoverTab({ data, status }) {
+function TakeoverTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   if (!data || status === "pending") return (
     <div className="empty-state">
       <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚠️</div>
@@ -2086,6 +2145,7 @@ function TakeoverTab({ data, status }) {
 
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px" }}>
         <StatCard label="Subdomains Checked" value={summary.checked} />
         <StatCard label="Services Fingerprints" value={summary.servicesScanned} />
@@ -2136,7 +2196,11 @@ function TakeoverTab({ data, status }) {
 }
 
 // ── CMS Scan Tab ──────────────────────────────────────────────────────────────
-function CMSScanTab({ data, status }) {
+function CMSScanTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(isMulti ? rawData.targetResults[0]?.domain : null);
+  const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
+
   const [expanded, setExpanded] = useState(null);
   if (!data || status === "pending") return (
     <div className="empty-state">
@@ -2152,6 +2216,7 @@ function CMSScanTab({ data, status }) {
   const { detectedPlatforms = [], checks = [], findings = [], summary = {} } = data;
   return (
     <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
         {detectedPlatforms.length === 0
           ? <div className="card" style={{ padding: "1rem", color: "var(--text-muted)" }}>No known CMS/framework detected.</div>

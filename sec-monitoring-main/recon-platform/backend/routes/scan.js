@@ -235,22 +235,65 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       updateModule(mod.key, 'running');
 
       try {
-        // Per-module timeout wrapper
-        const result = await withTimeout(
-          mod.runner(domain, (msg) => {
-            emit('module_progress', { module: mod.key, message: msg });
-          }),
-          MODULE_TIMEOUT,
-          mod.label
-        );
+        let result;
+        const multiTargetModules = new Set([
+          'dnsAssessment', 'portScan', 'serviceFingerprint', 'webTechFingerprint',
+          'wafDetector', 'vulnAssessment', 'nucleiChecks', 'jsSecretScanner',
+          'wapitiscan', 'cmsVulnScan'
+        ]);
+
+        if (multiTargetModules.has(mod.key)) {
+          const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+          const targets = [...new Set([domain, ...subdomains])];
+          
+          const tasks = targets.map(target => async () => {
+            if (scan.status === 'cancelled' || scan.status === 'complete') return null;
+            try {
+              return await withTimeout(
+                mod.runner(target, (msg) => {
+                  emit('module_progress', { module: mod.key, message: `[${target}] ${msg}` });
+                }),
+                MODULE_TIMEOUT,
+                `${mod.label} on ${target}`
+              );
+            } catch (err) {
+              console.error(`[SCAN ${scanId}] ${mod.label} on ${target} error: ${err.message}`);
+              emit('module_progress', { module: mod.key, message: `Error on ${target}: ${err.message}` });
+              return null;
+            }
+          });
+          
+          const targetResults = await runConcurrent(tasks, 3); // 3 concurrent targets
+          const validResults = targetResults.filter(r => r !== null);
+          
+          if (validResults.length > 0) {
+            result = { multiTarget: true, targetResults: validResults };
+          } else {
+            result = null;
+          }
+        } else {
+          result = await withTimeout(
+            mod.runner(domain, (msg) => {
+              emit('module_progress', { module: mod.key, message: msg });
+            }),
+            MODULE_TIMEOUT,
+            mod.label
+          );
+        }
 
         updateModule(mod.key, 'complete', result);
         completedWeight += mod.weight;
         scan.progress = completedWeight;
 
         // Collect findings
-        if (result && result.findings) {
-          scan.findings.push(...result.findings);
+        if (result) {
+          if (result.multiTarget && result.targetResults) {
+            result.targetResults.forEach(tr => {
+              if (tr && tr.findings) scan.findings.push(...tr.findings);
+            });
+          } else if (result.findings) {
+            scan.findings.push(...result.findings);
+          }
         }
 
         emit('module_complete', { module: mod.key, label: mod.label, progress: scan.progress });
@@ -278,6 +321,66 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   } finally {
     clearTimeout(globalTimer);
   }
+}
+
+function mergeResults(resultsList, mainDomain) {
+  if (!resultsList || resultsList.length === 0) return null;
+  const merged = JSON.parse(JSON.stringify(resultsList[0]));
+  merged.domain = mainDomain;
+
+  for (let i = 1; i < resultsList.length; i++) {
+    const current = resultsList[i];
+    for (const key of Object.keys(current)) {
+      if (key === 'domain') continue;
+
+      if (Array.isArray(current[key])) {
+        merged[key] = (merged[key] || []).concat(current[key]);
+      } else if (typeof current[key] === 'object' && current[key] !== null) {
+        if (!merged[key]) merged[key] = {};
+        for (const subKey of Object.keys(current[key])) {
+          if (typeof current[key][subKey] === 'number') {
+            merged[key][subKey] = (merged[key][subKey] || 0) + current[key][subKey];
+          } else if (Array.isArray(current[key][subKey])) {
+            merged[key][subKey] = (merged[key][subKey] || []).concat(current[key][subKey]);
+          } else if (merged[key][subKey] === undefined) {
+            merged[key][subKey] = current[key][subKey];
+          }
+        }
+      } else if (typeof current[key] === 'number') {
+        merged[key] = (merged[key] || 0) + current[key];
+      }
+    }
+  }
+
+  // Deduplicate findings
+  if (merged.findings && Array.isArray(merged.findings)) {
+    const seen = new Set();
+    merged.findings = merged.findings.filter(f => {
+      const key = `${f.id}-${f.affected || f.title}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  return merged;
+}
+
+async function runConcurrent(tasks, limit) {
+  const results = [];
+  const executing = [];
+  for (const task of tasks) {
+    const p = task().then(r => {
+      executing.splice(executing.indexOf(p), 1);
+      return r;
+    });
+    executing.push(p);
+    results.push(p);
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  return Promise.all(results);
 }
 
 function buildSummary(scan) {

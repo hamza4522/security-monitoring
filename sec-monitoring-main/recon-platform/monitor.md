@@ -6,13 +6,27 @@ ReconScan is an agentless, full-stack, modular web reconnaissance and active vul
 
 ## 🛠️ Installation & Setup
 
-### Prerequisites
-*   **Node.js**: v18 or higher recommended.
-*   **Wapiti**: Required for the Web Attacks module. Wapiti must be installed and accessible in your system's PATH. (`pip install wapiti3` or via OS package manager)
-*   **Nmap** (Optional but recommended): Required for accurate port scanning. If omitted, the tool falls back to simple socket connection checks.
+### Ubuntu Fresh Install Guide
+If you are deploying ReconScan on a fresh Ubuntu machine, follow these steps to install all prerequisites and start the platform:
 
-### 1. Clone & Install Dependencies
-First, install dependencies for both the frontend and backend.
+```bash
+# 1. Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# 2. Install Node.js (v18+) and npm
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 3. Install Python pip, Wapiti, and Nmap
+sudo apt install -y python3-pip nmap
+pip3 install wapiti3
+
+# Note: Ensure wapiti3 is added to your PATH if installed via pip locally.
+# You may need to add: export PATH="$HOME/.local/bin:$PATH" to your ~/.bashrc
+```
+
+### 1. Install Dependencies
+Navigate into the project folders and install the required npm packages.
 
 ```bash
 # Install backend dependencies
@@ -29,18 +43,27 @@ The backend handles all the heavy lifting, orchestrating scans, broadcasting upd
 
 ```bash
 cd recon-platform/backend
-npm start
-# The backend will start on http://localhost:3001
+# Start normally for development:
+node server.js
+
+# Or start in the background (for persistent deployment):
+# nohup node server.js > backend.log 2>&1 &
 ```
+*(The backend will start on http://localhost:3001)*
 
 ### 3. Start the Frontend App
 In a new terminal window, start the React application.
 
 ```bash
 cd recon-platform/frontend
+# Start development server:
 npm start
-# The frontend will be available at http://localhost:3000
+
+# Or build for production and serve it:
+# npm run build
+# npx serve -s build -l 3000
 ```
+*(The frontend will be available at http://localhost:3000)*
 
 ---
 

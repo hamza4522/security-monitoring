@@ -13,26 +13,38 @@ echo ""
 MODE=${1:-"dev"}
 
 install_tools_linux() {
-  echo "  [+] Installing security tools..."
-  # nmap
-  if ! command -v nmap &>/dev/null; then
-    sudo apt-get install -y nmap 2>/dev/null || sudo yum install -y nmap 2>/dev/null || true
+  echo "  [+] Updating system and installing base dependencies..."
+  sudo apt-get update -y || true
+  sudo apt-get install -y curl wget git python3-pip nmap 2>/dev/null || sudo yum install -y curl wget git python3-pip nmap 2>/dev/null || true
+
+  echo "  [+] Installing Node.js..."
+  if ! command -v node &>/dev/null; then
+    if command -v apt-get &>/dev/null; then
+      curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+    fi
+  fi
+
+  echo "  [+] Installing Wapiti3 (Python)..."
+  pip3 install wapiti3 2>/dev/null || true
+  export PATH="$HOME/.local/bin:$PATH"
+
+  echo "  [+] Installing Go..."
+  if ! command -v go &>/dev/null; then
+    sudo apt-get install -y golang-go 2>/dev/null || sudo yum install -y golang 2>/dev/null || true
   fi
 
   # ProjectDiscovery tools (Go-based)
   if command -v go &>/dev/null; then
-    echo "  [+] Installing subfinder..."
+    echo "  [+] Installing ProjectDiscovery tools (subfinder, httpx, dnsx, nuclei)..."
     go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 2>/dev/null || true
-    echo "  [+] Installing httpx..."
     go install github.com/projectdiscovery/httpx/cmd/httpx@latest 2>/dev/null || true
-    echo "  [+] Installing dnsx..."
     go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest 2>/dev/null || true
-    echo "  [+] Installing nuclei..."
     go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest 2>/dev/null || true
+    export PATH="$HOME/go/bin:$PATH"
   else
     echo "  [!] Go not found. ProjectDiscovery tools (subfinder/httpx/dnsx) won't be available."
     echo "      The platform will fall back to built-in Node.js DNS/HTTP probing."
-    echo "      Install Go from https://go.dev/dl/ for full scan capabilities."
   fi
 }
 
