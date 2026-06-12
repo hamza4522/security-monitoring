@@ -49,7 +49,7 @@ node server.js
 # Or start in the background (for persistent deployment):
 # nohup node server.js > backend.log 2>&1 &
 ```
-*(The backend will start on http://10.28.81.36:3001)*
+*(The backend will start on http://0.0.0.0:3001)*
 
 ### 3. Start the Frontend App
 In a new terminal window, start the React application.
@@ -63,7 +63,7 @@ npm start
 # npm run build
 # npx serve -s build -l 3000
 ```
-*(The frontend will be available at http://10.28.81.36:3000)*
+*(The frontend will be available at http://0.0.0.0:3000)*
 
 ---
 

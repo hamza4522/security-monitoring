@@ -58,7 +58,7 @@ cd backend && npm install && node server.js
 cd frontend && npm install && npm start
 ```
 
-Open http://10.28.81.36:3000
+Open http://0.0.0.0:3000
 
 ---
 
@@ -137,7 +137,7 @@ DELETE /api/scan/:id             Cancel a running scan
 GET    /api/report/:id/json      Full JSON report
 GET    /api/report/:id/executive Executive summary
 
-WS     ws://10.28.81.36:3001?scanId=<id>  Real-time scan progress
+WS     ws://0.0.0.0:3001?scanId=<id>  Real-time scan progress
 ```
 
 ---
