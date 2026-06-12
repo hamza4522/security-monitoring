@@ -6,16 +6,16 @@ import {
 } from "recharts";
 import "./App.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
-const WS_BASE = process.env.REACT_APP_WS_URL || "ws://localhost:3001";
+const API_BASE = process.env.REACT_APP_API_URL || "http://10.28.81.36:3001/api";
+const WS_BASE = process.env.REACT_APP_WS_URL || "ws://10.28.81.36:3001";
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 const SEVERITY_CONFIG = {
   critical: { label: "Critical", color: "#e11d48", bg: "#fff1f2", text: "#9f1239" },
-  high:     { label: "High",     color: "#ea580c", bg: "#fff7ed", text: "#9a3412" },
-  medium:   { label: "Medium",   color: "#d97706", bg: "#fffbeb", text: "#92400e" },
-  low:      { label: "Low",      color: "#16a34a", bg: "#f0fdf4", text: "#14532d" },
-  info:     { label: "Info",     color: "#0284c7", bg: "#f0f9ff", text: "#0c4a6e" },
+  high: { label: "High", color: "#ea580c", bg: "#fff7ed", text: "#9a3412" },
+  medium: { label: "Medium", color: "#d97706", bg: "#fffbeb", text: "#92400e" },
+  low: { label: "Low", color: "#16a34a", bg: "#f0fdf4", text: "#14532d" },
+  info: { label: "Info", color: "#0284c7", bg: "#f0f9ff", text: "#0c4a6e" },
 };
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
@@ -92,7 +92,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/scan`);
       const data = await res.json();
       setScans(data);
-    } catch (_) {}
+    } catch (_) { }
   }, []);
 
   const fetchActiveScanDetails = useCallback(async (scanId) => {
@@ -100,7 +100,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/scan/${scanId}`);
       const scan = await res.json();
       setActiveScan(scan);
-    } catch (_) {}
+    } catch (_) { }
   }, []);
 
   const fetchAlerts = useCallback(async () => {
@@ -109,7 +109,7 @@ export default function App() {
       const data = await res.json();
       setAlertHistory(data);
       setUnreadAlerts(data.filter(a => !a.read).length);
-    } catch (_) {}
+    } catch (_) { }
   }, []);
 
   // Apply theme to document
@@ -189,7 +189,7 @@ export default function App() {
         if (msg.event === "module_error") showToast(`❌ Error in ${msg.label || "module"}: ${msg.error || ""}`, "error");
       };
       wsRef.current = ws;
-    } catch (_) {}
+    } catch (_) { }
   }, [fetchScans, fetchActiveScanDetails, fetchAlerts]);
 
   return (
@@ -413,7 +413,7 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
         const done = scans.filter(s => s.status === "complete" && s.riskScore);
         if (done.length < 2) return null;
         const trendData = done.slice(0, 10).reverse()
-          .map((s, i) => ({ name: s.domain.slice(0,12), score: s.riskScore.score, grade: s.riskScore.grade, i }));
+          .map((s, i) => ({ name: s.domain.slice(0, 12), score: s.riskScore.score, grade: s.riskScore.grade, i }));
         return (
           <div className="card">
             <div className="card-header">📊 Risk Score Trend (last {trendData.length} scans)</div>
@@ -486,8 +486,8 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
   const sslBadge = sslData?.summary?.expired > 0
     ? ` 🔴${sslData.summary.expired}`
     : sslData?.summary?.expiring > 0
-    ? ` 🟡${sslData.summary.expiring}`
-    : "";
+      ? ` 🟡${sslData.summary.expiring}`
+      : "";
 
   const nucleiData = scan.modules?.nucleiChecks?.data;
   const nucleiBadge = nucleiData?.summary?.totalIssues > 0 ? ` (${nucleiData.summary.totalIssues})` : "";
@@ -502,22 +502,22 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
   const wafBadge = wafData?.isProtected ? ` 🛡️` : "";
 
   const tabs = [
-    { id: "overview",    label: "Overview" },
-    { id: "whois",       label: "🌐 WHOIS & IP" },
-    { id: "assets",      label: "Assets" },
-    { id: "ssl",         label: `🔒 SSL/TLS${sslBadge}` },
-    { id: "dns",         label: "DNS & Email" },
-    { id: "ports",       label: "Ports" },
-    { id: "services",    label: "Services" },
-    { id: "webtech",     label: "Web Tech" },
-    { id: "waf",         label: `WAF/CDN${wafBadge}` },
-    { id: "nuclei",      label: `🎯 Nuclei${nucleiBadge}` },
-    { id: "secrets",     label: `JS Secrets${jsBadge}` },
-    { id: "takeover",    label: `Takeover${takeoverBadge}` },
-    { id: "webattacks",  label: `⚔ Web Attacks ${scan.modules?.wapitiscan?.data?.findings?.length ? `(${scan.modules.wapitiscan.data.findings.length})` : ""}` },
-    { id: "cms",         label: `🏛 CMS ${scan.modules?.cmsVulnScan?.data?.findings?.length ? `(${scan.modules.cmsVulnScan.data.findings.length})` : ""}` },
-    { id: "findings",    label: `Findings ${scan.findings?.length ? `(${scan.findings.length})` : ""}` },
-    { id: "log",         label: "Live Log" },
+    { id: "overview", label: "Overview" },
+    { id: "whois", label: "🌐 WHOIS & IP" },
+    { id: "assets", label: "Assets" },
+    { id: "ssl", label: `🔒 SSL/TLS${sslBadge}` },
+    { id: "dns", label: "DNS & Email" },
+    { id: "ports", label: "Ports" },
+    { id: "services", label: "Services" },
+    { id: "webtech", label: "Web Tech" },
+    { id: "waf", label: `WAF/CDN${wafBadge}` },
+    { id: "nuclei", label: `🎯 Nuclei${nucleiBadge}` },
+    { id: "secrets", label: `JS Secrets${jsBadge}` },
+    { id: "takeover", label: `Takeover${takeoverBadge}` },
+    { id: "webattacks", label: `⚔ Web Attacks ${scan.modules?.wapitiscan?.data?.findings?.length ? `(${scan.modules.wapitiscan.data.findings.length})` : ""}` },
+    { id: "cms", label: `🏛 CMS ${scan.modules?.cmsVulnScan?.data?.findings?.length ? `(${scan.modules.cmsVulnScan.data.findings.length})` : ""}` },
+    { id: "findings", label: `Findings ${scan.findings?.length ? `(${scan.findings.length})` : ""}` },
+    { id: "log", label: "Live Log" },
   ];
 
   return (
@@ -566,22 +566,22 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
       </div>
 
       <div className="tab-content">
-        {activeTab === "overview"    && <OverviewTab scan={scan} />}
-        {activeTab === "whois"       && <WhoisTab data={scan.modules?.whoisLookup?.data} status={scan.modules?.whoisLookup?.status} />}
-        {activeTab === "assets"      && <AssetsTab data={scan.modules?.assetDiscovery?.data} />}
-        {activeTab === "ssl"         && <SSLScanTab data={scan.modules?.sslScan?.data} status={scan.modules?.sslScan?.status} />}
-        {activeTab === "dns"         && <DNSTab data={scan.modules?.dnsAssessment?.data} />}
-        {activeTab === "ports"       && <PortsTab data={scan.modules?.portScan?.data} />}
-        {activeTab === "services"    && <ServicesTab data={scan.modules?.serviceFingerprint?.data} />}
-        {activeTab === "webtech"     && <WebTechTab data={scan.modules?.webTechFingerprint?.data} />}
-        {activeTab === "waf"         && <WAFDetectorTab data={scan.modules?.wafDetector?.data} status={scan.modules?.wafDetector?.status} />}
-        {activeTab === "nuclei"      && <NucleiChecksTab data={scan.modules?.nucleiChecks?.data} status={scan.modules?.nucleiChecks?.status} />}
-        {activeTab === "secrets"     && <JSSecretTab data={scan.modules?.jsSecretScanner?.data} status={scan.modules?.jsSecretScanner?.status} />}
-        {activeTab === "takeover"    && <TakeoverTab data={scan.modules?.subdomainTakeover?.data} status={scan.modules?.subdomainTakeover?.status} />}
-        {activeTab === "webattacks"  && <WebAttacksTab data={scan.modules?.wapitiscan?.data} status={scan.modules?.wapitiscan?.status} />}
-        {activeTab === "cms"         && <CMSScanTab data={scan.modules?.cmsVulnScan?.data} status={scan.modules?.cmsVulnScan?.status} />}
-        {activeTab === "findings"    && <FindingsTab findings={scan.findings} />}
-        {activeTab === "log"         && <LiveLogTab logs={scanLog} />}
+        {activeTab === "overview" && <OverviewTab scan={scan} />}
+        {activeTab === "whois" && <WhoisTab data={scan.modules?.whoisLookup?.data} status={scan.modules?.whoisLookup?.status} />}
+        {activeTab === "assets" && <AssetsTab data={scan.modules?.assetDiscovery?.data} />}
+        {activeTab === "ssl" && <SSLScanTab data={scan.modules?.sslScan?.data} status={scan.modules?.sslScan?.status} />}
+        {activeTab === "dns" && <DNSTab data={scan.modules?.dnsAssessment?.data} />}
+        {activeTab === "ports" && <PortsTab data={scan.modules?.portScan?.data} />}
+        {activeTab === "services" && <ServicesTab data={scan.modules?.serviceFingerprint?.data} />}
+        {activeTab === "webtech" && <WebTechTab data={scan.modules?.webTechFingerprint?.data} />}
+        {activeTab === "waf" && <WAFDetectorTab data={scan.modules?.wafDetector?.data} status={scan.modules?.wafDetector?.status} />}
+        {activeTab === "nuclei" && <NucleiChecksTab data={scan.modules?.nucleiChecks?.data} status={scan.modules?.nucleiChecks?.status} />}
+        {activeTab === "secrets" && <JSSecretTab data={scan.modules?.jsSecretScanner?.data} status={scan.modules?.jsSecretScanner?.status} />}
+        {activeTab === "takeover" && <TakeoverTab data={scan.modules?.subdomainTakeover?.data} status={scan.modules?.subdomainTakeover?.status} />}
+        {activeTab === "webattacks" && <WebAttacksTab data={scan.modules?.wapitiscan?.data} status={scan.modules?.wapitiscan?.status} />}
+        {activeTab === "cms" && <CMSScanTab data={scan.modules?.cmsVulnScan?.data} status={scan.modules?.cmsVulnScan?.status} />}
+        {activeTab === "findings" && <FindingsTab findings={scan.findings} />}
+        {activeTab === "log" && <LiveLogTab logs={scanLog} />}
       </div>
     </div>
   );
@@ -590,20 +590,20 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
 // ── Module Pipeline ───────────────────────────────────────────────────────────
 function ModulePipeline({ modules }) {
   const MODULES = [
-    { key: "whoisLookup",       label: "WHOIS & IP" },
-    { key: "assetDiscovery",     label: "Assets" },
-    { key: "sslScan",            label: "SSL/TLS" },
-    { key: "dnsAssessment",      label: "DNS & Email" },
-    { key: "portScan",           label: "Port Scan" },
+    { key: "whoisLookup", label: "WHOIS & IP" },
+    { key: "assetDiscovery", label: "Assets" },
+    { key: "sslScan", label: "SSL/TLS" },
+    { key: "dnsAssessment", label: "DNS & Email" },
+    { key: "portScan", label: "Port Scan" },
     { key: "serviceFingerprint", label: "Services" },
     { key: "webTechFingerprint", label: "Web Tech" },
-    { key: "wafDetector",        label: "WAF/CDN" },
-    { key: "vulnAssessment",     label: "Vuln Assess" },
-    { key: "nucleiChecks",       label: "Nuclei" },
-    { key: "jsSecretScanner",    label: "JS Secrets" },
-    { key: "subdomainTakeover",  label: "Takeover" },
-    { key: "wapitiscan",         label: "Web Attacks" },
-    { key: "cmsVulnScan",        label: "CMS Scan" },
+    { key: "wafDetector", label: "WAF/CDN" },
+    { key: "vulnAssessment", label: "Vuln Assess" },
+    { key: "nucleiChecks", label: "Nuclei" },
+    { key: "jsSecretScanner", label: "JS Secrets" },
+    { key: "subdomainTakeover", label: "Takeover" },
+    { key: "wapitiscan", label: "Web Attacks" },
+    { key: "cmsVulnScan", label: "CMS Scan" },
   ];
   return (
     <div className="module-pipeline">
@@ -741,7 +741,7 @@ function AssetsTab({ data }) {
         <div className="scrollable-list">
           {(data.liveHosts || []).map((h, i) => (
             <div key={i} className="list-item host-item">
-              <span className={`http-status s${Math.floor((h.status||200)/100)}xx`}>{h.status || "200"}</span>
+              <span className={`http-status s${Math.floor((h.status || 200) / 100)}xx`}>{h.status || "200"}</span>
               <a href={h.url} target="_blank" rel="noreferrer">{h.url}</a>
             </div>
           ))}
@@ -977,11 +977,11 @@ function SSLScanTab({ data, status }) {
   const { hosts = [], summary = {} } = data;
 
   const STATUS_CONFIG = {
-    valid:    { label: "Valid",    color: "#22c55e", bg: "rgba(34,197,94,0.12)",  icon: "✓" },
+    valid: { label: "Valid", color: "#22c55e", bg: "rgba(34,197,94,0.12)", icon: "✓" },
     expiring: { label: "Expiring", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", icon: "⚠" },
-    expired:  { label: "Expired",  color: "#e11d48", bg: "rgba(225,29,72,0.12)",  icon: "✗" },
-    no_ssl:   { label: "No SSL",   color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "—" },
-    error:    { label: "Error",    color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "?" },
+    expired: { label: "Expired", color: "#e11d48", bg: "rgba(225,29,72,0.12)", icon: "✗" },
+    no_ssl: { label: "No SSL", color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "—" },
+    error: { label: "Error", color: "#6b7280", bg: "rgba(107,114,128,0.12)", icon: "?" },
   };
 
   return (
@@ -991,11 +991,11 @@ function SSLScanTab({ data, status }) {
         <div className="card-header">🔒 SSL/TLS Certificate Overview</div>
         <div className="summary-grid" style={{ padding: "12px 16px" }}>
           {[
-            { label: "Hosts Scanned", value: summary.total  || 0, color: null },
-            { label: "Valid",          value: summary.valid   || 0, color: "#22c55e" },
-            { label: "Expiring Soon",  value: summary.expiring|| 0, color: "#f59e0b" },
-            { label: "Expired",        value: summary.expired || 0, color: "#e11d48" },
-            { label: "No SSL",         value: summary.noSSL   || 0, color: "#6b7280" },
+            { label: "Hosts Scanned", value: summary.total || 0, color: null },
+            { label: "Valid", value: summary.valid || 0, color: "#22c55e" },
+            { label: "Expiring Soon", value: summary.expiring || 0, color: "#f59e0b" },
+            { label: "Expired", value: summary.expired || 0, color: "#e11d48" },
+            { label: "No SSL", value: summary.noSSL || 0, color: "#6b7280" },
           ].map(item => (
             <div key={item.label} className="summary-item">
               <span className="summary-value" style={item.color ? { color: item.color } : {}}>{item.value}</span>
@@ -1026,16 +1026,16 @@ function SSLScanTab({ data, status }) {
                 const cfg = STATUS_CONFIG[h.status] || STATUS_CONFIG.error;
                 const daysLeftColor =
                   h.daysLeft === null ? "var(--text-muted)"
-                  : h.daysLeft < 0   ? "#e11d48"
-                  : h.daysLeft <= 7  ? "#e11d48"
-                  : h.daysLeft <= 30 ? "#f59e0b"
-                  : "#22c55e";
+                    : h.daysLeft < 0 ? "#e11d48"
+                      : h.daysLeft <= 7 ? "#e11d48"
+                        : h.daysLeft <= 30 ? "#f59e0b"
+                          : "#22c55e";
 
                 return (
                   <tr key={i}>
                     <td>
                       <a href={`https://${h.host}`} target="_blank" rel="noreferrer"
-                         style={{ color: "#60a5fa", fontFamily: "monospace", fontSize: 12 }}>
+                        style={{ color: "#60a5fa", fontFamily: "monospace", fontSize: 12 }}>
                         {h.host}
                       </a>
                     </td>
@@ -1050,8 +1050,8 @@ function SSLScanTab({ data, status }) {
                     </td>
                     <td style={{ color: daysLeftColor, fontWeight: 600, fontFamily: "monospace" }}>
                       {h.daysLeft === null ? "—"
-                       : h.daysLeft < 0   ? `Expired ${Math.abs(h.daysLeft)}d ago`
-                       : `${h.daysLeft}d`}
+                        : h.daysLeft < 0 ? `Expired ${Math.abs(h.daysLeft)}d ago`
+                          : `${h.daysLeft}d`}
                     </td>
                     <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(h.validTo)}</td>
                     <td style={{ fontSize: 12 }}>
@@ -1105,11 +1105,11 @@ function NucleiChecksTab({ data: rawData, status }) {
   const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
 
   const SEV_COLOR = {
-    critical: { bg: "rgba(225,29,72,0.12)",  color: "#e11d48", label: "CRITICAL" },
-    high:     { bg: "rgba(239,68,68,0.12)",  color: "#ef4444", label: "HIGH" },
-    medium:   { bg: "rgba(245,158,11,0.12)", color: "#f59e0b", label: "MEDIUM" },
-    low:      { bg: "rgba(34,197,94,0.1)",   color: "#22c55e", label: "LOW" },
-    info:     { bg: "rgba(96,165,250,0.1)",  color: "#60a5fa", label: "INFO" },
+    critical: { bg: "rgba(225,29,72,0.12)", color: "#e11d48", label: "CRITICAL" },
+    high: { bg: "rgba(239,68,68,0.12)", color: "#ef4444", label: "HIGH" },
+    medium: { bg: "rgba(245,158,11,0.12)", color: "#f59e0b", label: "MEDIUM" },
+    low: { bg: "rgba(34,197,94,0.1)", color: "#22c55e", label: "LOW" },
+    info: { bg: "rgba(96,165,250,0.1)", color: "#60a5fa", label: "INFO" },
   };
 
   if (status === "pending" || !data) {
@@ -1139,9 +1139,9 @@ function NucleiChecksTab({ data: rawData, status }) {
 
   const grouped = findings.reduce((acc, f) => {
     const cat = f.id?.startsWith("NUCLEI-PANEL") ? "Exposed Panels"
-      : f.id?.startsWith("NUCLEI-CVE")   ? "CVE Probes"
-      : f.id?.startsWith("NUCLEI-PHP") || f.id?.startsWith("NUCLEI-EXPRESS") || f.id?.startsWith("NUCLEI-SOURCEMAP") || f.id?.startsWith("NUCLEI-WERKZEUG") || f.id?.startsWith("NUCLEI-DJANGO") || f.id?.startsWith("NUCLEI-ACTUATOR") ? "Tech Misconfigs"
-      : "API & Other";
+      : f.id?.startsWith("NUCLEI-CVE") ? "CVE Probes"
+        : f.id?.startsWith("NUCLEI-PHP") || f.id?.startsWith("NUCLEI-EXPRESS") || f.id?.startsWith("NUCLEI-SOURCEMAP") || f.id?.startsWith("NUCLEI-WERKZEUG") || f.id?.startsWith("NUCLEI-DJANGO") || f.id?.startsWith("NUCLEI-ACTUATOR") ? "Tech Misconfigs"
+          : "API & Other";
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(f);
     return acc;
@@ -1149,9 +1149,9 @@ function NucleiChecksTab({ data: rawData, status }) {
 
   const catIcons = {
     "Exposed Panels": "🖥️",
-    "CVE Probes":     "💀",
-    "Tech Misconfigs":"⚙️",
-    "API & Other":    "🔌",
+    "CVE Probes": "💀",
+    "Tech Misconfigs": "⚙️",
+    "API & Other": "🔌",
   };
 
   return (
@@ -1163,12 +1163,12 @@ function NucleiChecksTab({ data: rawData, status }) {
         <div className="summary-grid" style={{ padding: "12px 16px" }}>
           {[
             { label: "Panels Checked", value: summary.panelsChecked || 0, color: null },
-            { label: "Panels Found",   value: summary.panelsFound   || 0, color: summary.panelsFound > 0 ? "#e11d48" : "#22c55e" },
-            { label: "CVE Probes Run", value: summary.cveProbes     || 0, color: null },
-            { label: "CVE Hits",       value: summary.cveHits       || 0, color: summary.cveHits > 0 ? "#e11d48" : "#22c55e" },
-            { label: "Tech Issues",    value: summary.techMisconfigs|| 0, color: summary.techMisconfigs > 0 ? "#f59e0b" : null },
-            { label: "API Issues",     value: summary.apiIssues     || 0, color: summary.apiIssues > 0 ? "#f59e0b" : null },
-            { label: "Total Issues",   value: summary.totalIssues   || 0, color: summary.totalIssues > 0 ? "#e11d48" : "#22c55e" },
+            { label: "Panels Found", value: summary.panelsFound || 0, color: summary.panelsFound > 0 ? "#e11d48" : "#22c55e" },
+            { label: "CVE Probes Run", value: summary.cveProbes || 0, color: null },
+            { label: "CVE Hits", value: summary.cveHits || 0, color: summary.cveHits > 0 ? "#e11d48" : "#22c55e" },
+            { label: "Tech Issues", value: summary.techMisconfigs || 0, color: summary.techMisconfigs > 0 ? "#f59e0b" : null },
+            { label: "API Issues", value: summary.apiIssues || 0, color: summary.apiIssues > 0 ? "#f59e0b" : null },
+            { label: "Total Issues", value: summary.totalIssues || 0, color: summary.totalIssues > 0 ? "#e11d48" : "#22c55e" },
           ].map(item => (
             <div key={item.label} className="summary-item">
               <span className="summary-value" style={item.color ? { color: item.color } : {}}>{item.value}</span>
@@ -1301,13 +1301,13 @@ function WhoisTab({ data, status }) {
   }
 
   const { registrar, registrantOrg, registrationDate, expirationDate, updatedDate,
-          daysUntilExpiry, nameservers = [], domainStatus = [], ipGeo = [] } = data;
+    daysUntilExpiry, nameservers = [], domainStatus = [], ipGeo = [] } = data;
 
   const expiryColor = daysUntilExpiry === null ? "#5a6a80"
     : daysUntilExpiry < 0 ? "#e11d48"
-    : daysUntilExpiry <= 30 ? "#ea580c"
-    : daysUntilExpiry <= 90 ? "#d97706"
-    : "#22c55e";
+      : daysUntilExpiry <= 30 ? "#ea580c"
+        : daysUntilExpiry <= 90 ? "#d97706"
+          : "#22c55e";
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
 
@@ -1320,10 +1320,10 @@ function WhoisTab({ data, status }) {
           <div className="card-header">📋 Domain Registration</div>
           <div className="whois-info-grid">
             {[
-              { label: "Registrar",   value: registrar    || "Unknown" },
-              { label: "Registrant",  value: registrantOrg || "Privacy Protected" },
-              { label: "Registered",  value: fmtDate(registrationDate) },
-              { label: "Updated",     value: fmtDate(updatedDate) },
+              { label: "Registrar", value: registrar || "Unknown" },
+              { label: "Registrant", value: registrantOrg || "Privacy Protected" },
+              { label: "Registered", value: fmtDate(registrationDate) },
+              { label: "Updated", value: fmtDate(updatedDate) },
               {
                 label: "Expires",
                 value: fmtDate(expirationDate),
@@ -1393,14 +1393,14 @@ function WhoisTab({ data, status }) {
                     />
                   )}
                   <code className="geo-ip">{geo.ip}</code>
-                  {geo.isProxy  && <span className="geo-badge proxy">PROXY</span>}
+                  {geo.isProxy && <span className="geo-badge proxy">PROXY</span>}
                   {geo.isHosting && <span className="geo-badge cloud">CLOUD</span>}
                 </div>
                 <div className="geo-details">
                   {[
                     { icon: "📍", label: [geo.city, geo.region, geo.country].filter(Boolean).join(", ") },
                     { icon: "🏢", label: geo.isp },
-                    { icon: "🏗",  label: geo.org },
+                    { icon: "🏗", label: geo.org },
                     { icon: "🔢", label: geo.asn },
                   ].filter(i => i.label).map((item, idx) => (
                     <div key={idx} className="geo-detail-row">
@@ -1473,17 +1473,17 @@ function WebAttacksTab({ data: rawData, status }) {
 
   const categoryRows = Object.entries(byCategory).map(([cat, rows]) => {
     const vulnerable = rows.some(r => r.status === "vulnerable" || r.status === "detected");
-    const missing    = rows.some(r => r.status === "missing");
-    const present    = rows.some(r => r.status === "present" || r.status === "ok");
+    const missing = rows.some(r => r.status === "missing");
+    const present = rows.some(r => r.status === "present" || r.status === "ok");
     const status = vulnerable ? "vulnerable" : missing ? "missing" : present ? "ok" : "not detected";
     const target = rows[0]?.target || "";
     const detail = rows.find(r => r.payload)?.payload || rows.find(r => r.detail)?.detail || "—";
-    const param  = rows.find(r => r.param)?.param || "—";
+    const param = rows.find(r => r.param)?.param || "—";
     return { category: cat, status, target, detail, param, count: rows.length };
   });
 
-  const vulnCount    = findings.filter(f => ["critical","high"].includes(f.severity)).length;
-  const totalProbes  = attackSurface.testedPoints || summary.totalProbes || 0;
+  const vulnCount = findings.filter(f => ["critical", "high"].includes(f.severity)).length;
+  const totalProbes = attackSurface.testedPoints || summary.totalProbes || 0;
   const [showParams, setShowParams] = useState(false);
   const uniqueParams = Array.from(new Set(attackResults.map(r => r.param).filter(p => p && p !== "—")));
 
@@ -1507,19 +1507,19 @@ function WebAttacksTab({ data: rawData, status }) {
       {/* Attack surface stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "1rem" }}>
         {[
-          { label: "URL Params Found",   value: attackSurface.urlParams  || 0, icon: "🔗", onClick: () => setShowParams(!showParams), active: showParams },
-          { label: "Forms Found",        value: attackSurface.forms       || 0, icon: "📝" },
-          { label: "Total Probes Sent",  value: totalProbes,                   icon: "📡" },
-          { label: "XSS Found",          value: summary.xss    || 0,           icon: "⚡", danger: (summary.xss || 0) > 0 },
-          { label: "SQLi Found",         value: summary.sqli   || 0,           icon: "💉", danger: (summary.sqli || 0) > 0 },
-          { label: "CMDi Found",         value: summary.cmdi   || 0,           icon: "💣", danger: (summary.cmdi || 0) > 0 },
-          { label: "LFI Found",          value: summary.lfi    || 0,           icon: "📂", danger: (summary.lfi || 0) > 0 },
-          { label: "Info Disclosure",    value: summary.infoDisc || 0,         icon: "🔍", danger: (summary.infoDisc || 0) > 0 },
+          { label: "URL Params Found", value: attackSurface.urlParams || 0, icon: "🔗", onClick: () => setShowParams(!showParams), active: showParams },
+          { label: "Forms Found", value: attackSurface.forms || 0, icon: "📝" },
+          { label: "Total Probes Sent", value: totalProbes, icon: "📡" },
+          { label: "XSS Found", value: summary.xss || 0, icon: "⚡", danger: (summary.xss || 0) > 0 },
+          { label: "SQLi Found", value: summary.sqli || 0, icon: "💉", danger: (summary.sqli || 0) > 0 },
+          { label: "CMDi Found", value: summary.cmdi || 0, icon: "💣", danger: (summary.cmdi || 0) > 0 },
+          { label: "LFI Found", value: summary.lfi || 0, icon: "📂", danger: (summary.lfi || 0) > 0 },
+          { label: "Info Disclosure", value: summary.infoDisc || 0, icon: "🔍", danger: (summary.infoDisc || 0) > 0 },
         ].map(item => (
-          <div key={item.label} 
-               className={`stat-card ${item.danger ? "danger" : ""} ${item.active ? "active" : ""}`} 
-               style={{ padding: "1rem", textAlign: "center", cursor: item.onClick ? "pointer" : "default" }}
-               onClick={item.onClick}>
+          <div key={item.label}
+            className={`stat-card ${item.danger ? "danger" : ""} ${item.active ? "active" : ""}`}
+            style={{ padding: "1rem", textAlign: "center", cursor: item.onClick ? "pointer" : "default" }}
+            onClick={item.onClick}>
             <div style={{ fontSize: "1.25rem", marginBottom: "0.25rem" }}>{item.icon}</div>
             <div className="stat-value" style={{ fontSize: "1.5rem" }}>{item.value}</div>
             <div className="stat-label" style={{ fontSize: "0.75rem" }}>{item.label}</div>
@@ -1569,14 +1569,13 @@ function WebAttacksTab({ data: rawData, status }) {
                     {row.category}
                   </td>
                   <td>
-                    <span className={`status-pill ${
-                      row.status === "vulnerable" || row.status === "missing" ? "error" :
-                      row.status === "ok" || row.status === "not detected" ? "complete" : "running"
-                    }`} style={{ fontSize: "0.75rem" }}>
+                    <span className={`status-pill ${row.status === "vulnerable" || row.status === "missing" ? "error" :
+                        row.status === "ok" || row.status === "not detected" ? "complete" : "running"
+                      }`} style={{ fontSize: "0.75rem" }}>
                       {row.status === "vulnerable" ? "⚠ VULNERABLE" :
-                       row.status === "missing"    ? "✗ MISSING" :
-                       row.status === "detected"   ? "⚠ DETECTED" :
-                       row.status === "ok" || row.status === "present" ? "✓ OK" : "✓ Not Detected"}
+                        row.status === "missing" ? "✗ MISSING" :
+                          row.status === "detected" ? "⚠ DETECTED" :
+                            row.status === "ok" || row.status === "present" ? "✓ OK" : "✓ Not Detected"}
                     </span>
                   </td>
                   <td className="banner-cell" style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1598,39 +1597,39 @@ function WebAttacksTab({ data: rawData, status }) {
             {[...findings]
               .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 5) - (SEVERITY_ORDER[b.severity] ?? 5))
               .map(f => (
-              <div
-                key={f.id}
-                className={`finding-card ${f.severity} ${expandedFinding === f.id ? "expanded" : ""}`}
-                onClick={() => setExpandedFinding(expandedFinding === f.id ? null : f.id)}
-              >
-                <div className="finding-card-header">
-                  <SeverityBadge severity={f.severity} />
-                  <span className="finding-card-title">{f.title}</span>
-                  <span className="finding-module-tag">{ATTACK_CATEGORY_ICONS[f.category] || "⚔"} wapiti</span>
-                  <span className="expand-icon">{expandedFinding === f.id ? "▲" : "▼"}</span>
-                </div>
-                {expandedFinding === f.id && (
-                  <div className="finding-card-body">
-                    <div className="finding-section">
-                      <div className="finding-section-label">Description</div>
-                      <div>{f.description}</div>
-                    </div>
-                    {f.affected && (
-                      <div className="finding-section">
-                        <div className="finding-section-label">Affected URL</div>
-                        <code style={{ wordBreak: "break-all" }}>{f.affected}</code>
-                      </div>
-                    )}
-                    {f.remediation && (
-                      <div className="finding-section remediation">
-                        <div className="finding-section-label">Remediation</div>
-                        <div>{f.remediation}</div>
-                      </div>
-                    )}
+                <div
+                  key={f.id}
+                  className={`finding-card ${f.severity} ${expandedFinding === f.id ? "expanded" : ""}`}
+                  onClick={() => setExpandedFinding(expandedFinding === f.id ? null : f.id)}
+                >
+                  <div className="finding-card-header">
+                    <SeverityBadge severity={f.severity} />
+                    <span className="finding-card-title">{f.title}</span>
+                    <span className="finding-module-tag">{ATTACK_CATEGORY_ICONS[f.category] || "⚔"} wapiti</span>
+                    <span className="expand-icon">{expandedFinding === f.id ? "▲" : "▼"}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {expandedFinding === f.id && (
+                    <div className="finding-card-body">
+                      <div className="finding-section">
+                        <div className="finding-section-label">Description</div>
+                        <div>{f.description}</div>
+                      </div>
+                      {f.affected && (
+                        <div className="finding-section">
+                          <div className="finding-section-label">Affected URL</div>
+                          <code style={{ wordBreak: "break-all" }}>{f.affected}</code>
+                        </div>
+                      )}
+                      {f.remediation && (
+                        <div className="finding-section remediation">
+                          <div className="finding-section-label">Remediation</div>
+                          <div>{f.remediation}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
           </div>
         </div>
       )}
@@ -1758,9 +1757,9 @@ function HistoryView({ scans, onSelectScan, compareIds, setCompareIds, onCompare
 const SEVERITY_SORT = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
 function CompareView({ scanAId, scanBId, onClose }) {
-  const [result, setResult]   = useState(null);
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/scan/compare?a=${scanAId}&b=${scanBId}`)
@@ -1801,7 +1800,7 @@ function CompareView({ scanAId, scanBId, onClose }) {
           {f.title}
         </span>
         <span className="finding-module-tag">{f.module}</span>
-        {badge === "new"   && <span className="compare-badge new">NEW</span>}
+        {badge === "new" && <span className="compare-badge new">NEW</span>}
         {badge === "fixed" && <span className="compare-badge fixed">FIXED</span>}
       </div>
     </div>
@@ -1846,9 +1845,9 @@ function CompareView({ scanAId, scanBId, onClose }) {
           </div>
           <div className="compare-summary-pills">
             {[
-              { label: "New",      value: summary.newCount,      color: "#e11d48", icon: "🔴" },
+              { label: "New", value: summary.newCount, color: "#e11d48", icon: "🔴" },
               { label: "Resolved", value: summary.resolvedCount, color: "#22c55e", icon: "✅" },
-              { label: "Shared",   value: summary.sharedCount,   color: "#d97706", icon: "⚠️" },
+              { label: "Shared", value: summary.sharedCount, color: "#d97706", icon: "⚠️" },
             ].map(item => (
               <div key={item.label} className="compare-pill">
                 <div>{item.icon}</div>
@@ -1900,7 +1899,7 @@ function CompareView({ scanAId, scanBId, onClose }) {
 function RiskGrade({ grade, score, small }) {
   const color = grade === "A+" || grade === "A" ? "#16a34a" :
     grade === "B" ? "#65a30d" : grade === "C" ? "#d97706" :
-    grade === "D" ? "#ea580c" : grade === "E" ? "#dc2626" : "#9f1239";
+      grade === "D" ? "#ea580c" : grade === "E" ? "#dc2626" : "#9f1239";
   return (
     <span className={`risk-grade ${small ? "small" : ""}`} style={{ color, borderColor: color + "30" }}>
       {grade} {score !== undefined && !small ? <span className="grade-score">({score})</span> : null}
@@ -2030,7 +2029,7 @@ function JSSecretTab({ data: rawData, status }) {
   const data = isMulti ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0]) : rawData;
 
   const [expanded, setExpanded] = useState(null);
-  
+
   if (!data || status === "pending") return (
     <div className="empty-state">
       <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🔑</div>
@@ -2184,8 +2183,8 @@ function TakeoverTab({ data: rawData, status }) {
                 <td style={{ fontSize: "11px" }}>{c.cnameTarget || "—"}</td>
                 <td>
                   {c.cnameChain?.length < 2 ? <span className="status-pill">No CNAME</span> :
-                   c.targetNXDOMAIN ? <span className="status-pill warning">NXDOMAIN</span> :
-                   <span className="status-pill complete">Resolves (HTTP {c.status})</span>}
+                    c.targetNXDOMAIN ? <span className="status-pill warning">NXDOMAIN</span> :
+                      <span className="status-pill complete">Resolves (HTTP {c.status})</span>}
                 </td>
               </tr>
             ))}
@@ -2230,15 +2229,15 @@ function CMSScanTab({ data: rawData, status }) {
       </div>
       {summary.checksRun > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
-          {[{label:"Checks Run",value:summary.checksRun,icon:"🔬"},{label:"Passed",value:summary.passed,icon:"✅"},
-            {label:"Failed",value:summary.failed,icon:"❌",danger:summary.failed>0},{label:"Findings",value:findings.length,icon:"🚨",danger:findings.length>0}]
+          {[{ label: "Checks Run", value: summary.checksRun, icon: "🔬" }, { label: "Passed", value: summary.passed, icon: "✅" },
+          { label: "Failed", value: summary.failed, icon: "❌", danger: summary.failed > 0 }, { label: "Findings", value: findings.length, icon: "🚨", danger: findings.length > 0 }]
             .map(item => (
-            <div key={item.label} className={`stat-card ${item.danger?"danger":""}`} style={{ padding:"1rem",textAlign:"center" }}>
-              <div style={{fontSize:"1.25rem"}}>{item.icon}</div>
-              <div className="stat-value" style={{fontSize:"1.5rem"}}>{item.value}</div>
-              <div className="stat-label" style={{fontSize:"0.75rem"}}>{item.label}</div>
-            </div>
-          ))}
+              <div key={item.label} className={`stat-card ${item.danger ? "danger" : ""}`} style={{ padding: "1rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.25rem" }}>{item.icon}</div>
+                <div className="stat-value" style={{ fontSize: "1.5rem" }}>{item.value}</div>
+                <div className="stat-label" style={{ fontSize: "0.75rem" }}>{item.label}</div>
+              </div>
+            ))}
         </div>
       )}
       {checks.length > 0 && (
@@ -2246,13 +2245,13 @@ function CMSScanTab({ data: rawData, status }) {
           <div className="card-header">🔍 CMS-Specific Checks</div>
           <table className="data-table">
             <thead><tr><th>Platform</th><th>Check</th><th>Path</th><th>Result</th><th>HTTP</th></tr></thead>
-            <tbody>{checks.map((c,i)=>(
+            <tbody>{checks.map((c, i) => (
               <tr key={i}>
-                <td><code style={{fontSize:"11px"}}>{c.platform}</code></td>
-                <td style={{fontSize:"13px"}}>{c.name}</td>
-                <td><code style={{fontSize:"11px",color:"#60a5fa"}}>{c.path}</code></td>
-                <td><span className={`status-pill ${c.status==="fail"?"error":"complete"}`}>{c.status==="fail"?"⚠ FOUND":"✓ CLEAR"}</span></td>
-                <td style={{fontSize:"12px",color:"#5a6a80"}}>{c.httpStatus||"—"}</td>
+                <td><code style={{ fontSize: "11px" }}>{c.platform}</code></td>
+                <td style={{ fontSize: "13px" }}>{c.name}</td>
+                <td><code style={{ fontSize: "11px", color: "#60a5fa" }}>{c.path}</code></td>
+                <td><span className={`status-pill ${c.status === "fail" ? "error" : "complete"}`}>{c.status === "fail" ? "⚠ FOUND" : "✓ CLEAR"}</span></td>
+                <td style={{ fontSize: "12px", color: "#5a6a80" }}>{c.httpStatus || "—"}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -2261,20 +2260,20 @@ function CMSScanTab({ data: rawData, status }) {
       {findings.length > 0 && (
         <div className="card">
           <div className="card-header">🚨 CMS Findings ({findings.length})</div>
-          <div className="findings-list" style={{padding:"8px"}}>
-            {[...findings].sort((a,b)=>(SEVERITY_ORDER[a.severity]??5)-(SEVERITY_ORDER[b.severity]??5)).map(f=>(
-              <div key={f.id} className={`finding-card ${f.severity} ${expanded===f.id?"expanded":""}`} onClick={()=>setExpanded(expanded===f.id?null:f.id)}>
+          <div className="findings-list" style={{ padding: "8px" }}>
+            {[...findings].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 5) - (SEVERITY_ORDER[b.severity] ?? 5)).map(f => (
+              <div key={f.id} className={`finding-card ${f.severity} ${expanded === f.id ? "expanded" : ""}`} onClick={() => setExpanded(expanded === f.id ? null : f.id)}>
                 <div className="finding-card-header">
                   <SeverityBadge severity={f.severity} />
                   <span className="finding-card-title">{f.title}</span>
-                  {f.owasp&&<span className="finding-module-tag">{f.owasp}</span>}
-                  <span className="expand-icon">{expanded===f.id?"▲":"▼"}</span>
+                  {f.owasp && <span className="finding-module-tag">{f.owasp}</span>}
+                  <span className="expand-icon">{expanded === f.id ? "▲" : "▼"}</span>
                 </div>
-                {expanded===f.id&&(
+                {expanded === f.id && (
                   <div className="finding-card-body">
                     <div className="finding-section"><div className="finding-section-label">Description</div>{f.description}</div>
-                    {f.affected&&<div className="finding-section"><div className="finding-section-label">Affected</div><code style={{wordBreak:"break-all"}}>{f.affected}</code></div>}
-                    {f.remediation&&<div className="finding-section remediation"><div className="finding-section-label">Remediation</div>{f.remediation}</div>}
+                    {f.affected && <div className="finding-section"><div className="finding-section-label">Affected</div><code style={{ wordBreak: "break-all" }}>{f.affected}</code></div>}
+                    {f.remediation && <div className="finding-section remediation"><div className="finding-section-label">Remediation</div>{f.remediation}</div>}
                   </div>
                 )}
               </div>
@@ -2282,11 +2281,11 @@ function CMSScanTab({ data: rawData, status }) {
           </div>
         </div>
       )}
-      {findings.length===0&&status==="complete"&&(
-        <div className="card" style={{textAlign:"center",padding:"2.5rem"}}>
-          <div style={{fontSize:"2.5rem"}}>✅</div>
-          <div style={{fontWeight:600,marginTop:"0.5rem"}}>No CMS-Specific Vulnerabilities Found</div>
-          <div style={{color:"var(--text-muted)",fontSize:"0.875rem",marginTop:"0.25rem"}}>{summary.checksRun||0} checks run</div>
+      {findings.length === 0 && status === "complete" && (
+        <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+          <div style={{ fontSize: "2.5rem" }}>✅</div>
+          <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No CMS-Specific Vulnerabilities Found</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>{summary.checksRun || 0} checks run</div>
         </div>
       )}
     </div>
@@ -2295,39 +2294,39 @@ function CMSScanTab({ data: rawData, status }) {
 
 // ── Alerts View ───────────────────────────────────────────────────────────────
 function AlertsView({ alertHistory, onMarkRead, onMarkAllRead }) {
-  const triggerIcon={severity:"🚨",risk_score:"📊",scan_complete:"✅",attack_type:"⚔",open_port:"🔌",test:"🧪"};
-  const sevColor={critical:"#e11d48",high:"#ea580c",medium:"#d97706",low:"#16a34a"};
+  const triggerIcon = { severity: "🚨", risk_score: "📊", scan_complete: "✅", attack_type: "⚔", open_port: "🔌", test: "🧪" };
+  const sevColor = { critical: "#e11d48", high: "#ea580c", medium: "#d97706", low: "#16a34a" };
   return (
     <div className="view-content">
-      <div className="page-header" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div><h1>🚨 Alerts</h1><p className="page-sub">Fired notifications from your alert rules</p></div>
-        {alertHistory.some(a=>!a.read)&&(
-          <button className="scan-btn" style={{padding:"8px 16px",fontSize:"12px"}} onClick={onMarkAllRead}>Mark All Read</button>
+        {alertHistory.some(a => !a.read) && (
+          <button className="scan-btn" style={{ padding: "8px 16px", fontSize: "12px" }} onClick={onMarkAllRead}>Mark All Read</button>
         )}
       </div>
-      {alertHistory.length===0?(
-        <div className="empty-state" style={{padding:"60px"}}>
-          <div style={{fontSize:"3rem"}}>🔕</div>
-          <div style={{fontWeight:600,marginTop:"1rem"}}>No Alerts Yet</div>
-          <div style={{color:"var(--text-muted)",marginTop:"0.5rem"}}>Configure rules in Alert Settings. Alerts fire when a scan matches your conditions.</div>
+      {alertHistory.length === 0 ? (
+        <div className="empty-state" style={{ padding: "60px" }}>
+          <div style={{ fontSize: "3rem" }}>🔕</div>
+          <div style={{ fontWeight: 600, marginTop: "1rem" }}>No Alerts Yet</div>
+          <div style={{ color: "var(--text-muted)", marginTop: "0.5rem" }}>Configure rules in Alert Settings. Alerts fire when a scan matches your conditions.</div>
         </div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-          {alertHistory.map(a=>(
-            <div key={a.id} className={`card alert-item ${a.read?"read":"unread"}`} onClick={()=>!a.read&&onMarkRead(a.id)} style={{cursor:a.read?"default":"pointer"}}>
-              <div style={{display:"flex",gap:"12px",padding:"14px 16px",alignItems:"flex-start"}}>
-                <span style={{fontSize:"1.5rem",flexShrink:0}}>{triggerIcon[a.trigger]||"🔔"}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"4px"}}>
-                    <span style={{fontWeight:600,fontSize:"14px"}}>{a.ruleName}</span>
-                    {!a.read&&<span style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",display:"inline-block"}}/>}
-                    <span style={{fontSize:"11px",color:"var(--text-muted)",marginLeft:"auto"}}>{new Date(a.timestamp).toLocaleString()}</span>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {alertHistory.map(a => (
+            <div key={a.id} className={`card alert-item ${a.read ? "read" : "unread"}`} onClick={() => !a.read && onMarkRead(a.id)} style={{ cursor: a.read ? "default" : "pointer" }}>
+              <div style={{ display: "flex", gap: "12px", padding: "14px 16px", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "1.5rem", flexShrink: 0 }}>{triggerIcon[a.trigger] || "🔔"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                    <span style={{ fontWeight: 600, fontSize: "14px" }}>{a.ruleName}</span>
+                    {!a.read && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", display: "inline-block" }} />}
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "auto" }}>{new Date(a.timestamp).toLocaleString()}</span>
                   </div>
-                  <div style={{fontSize:"13px"}}><code style={{color:"#60a5fa"}}>{a.domain}</code>{" — "}{a.triggerDetail}</div>
-                  {a.finding&&<div style={{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px"}}>Finding: <span style={{color:sevColor[a.finding.severity]||"#c8d0e0"}}>{a.finding.title}</span></div>}
-                  <div style={{display:"flex",gap:"6px",marginTop:"6px",flexWrap:"wrap"}}>
-                    <span style={{fontSize:"11px",background:"#1e2a40",padding:"2px 8px",borderRadius:"10px"}}>Risk: {a.riskScore} — {a.riskGrade}</span>
-                    {(a.channels||[]).map(ch=><span key={ch} style={{fontSize:"11px",background:"#1e2a40",padding:"2px 8px",borderRadius:"10px"}}>{ch}</span>)}
+                  <div style={{ fontSize: "13px" }}><code style={{ color: "#60a5fa" }}>{a.domain}</code>{" — "}{a.triggerDetail}</div>
+                  {a.finding && <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Finding: <span style={{ color: sevColor[a.finding.severity] || "#c8d0e0" }}>{a.finding.title}</span></div>}
+                  <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "11px", background: "#1e2a40", padding: "2px 8px", borderRadius: "10px" }}>Risk: {a.riskScore} — {a.riskGrade}</span>
+                    {(a.channels || []).map(ch => <span key={ch} style={{ fontSize: "11px", background: "#1e2a40", padding: "2px 8px", borderRadius: "10px" }}>{ch}</span>)}
                   </div>
                 </div>
               </div>
@@ -2341,59 +2340,59 @@ function AlertsView({ alertHistory, onMarkRead, onMarkAllRead }) {
 
 // ── Alert Settings View ───────────────────────────────────────────────────────
 function AlertSettingsView() {
-  const [rules,setRules]=useState([]);
-  const [config,setConfig]=useState({url:"",slack:"",discord:"",email:{host:"",port:587,user:"",pass:"",to:""}});
-  const [saved,setSaved]=useState(false);
-  const [notifPerm,setNotifPerm]=useState(typeof Notification!=="undefined"?Notification.permission:"default");
-  useEffect(()=>{
-    fetch(`${API_BASE}/alerts/rules`).then(r=>r.json()).then(setRules).catch(()=>{});
-    fetch(`${API_BASE}/alerts/config`).then(r=>r.json()).then(setConfig).catch(()=>{});
-  },[]);
-  const saveConfig=async()=>{
-    await fetch(`${API_BASE}/alerts/config`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(config)});
-    setSaved(true);setTimeout(()=>setSaved(false),2500);showToast("Alert config saved!","success");
+  const [rules, setRules] = useState([]);
+  const [config, setConfig] = useState({ url: "", slack: "", discord: "", email: { host: "", port: 587, user: "", pass: "", to: "" } });
+  const [saved, setSaved] = useState(false);
+  const [notifPerm, setNotifPerm] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
+  useEffect(() => {
+    fetch(`${API_BASE}/alerts/rules`).then(r => r.json()).then(setRules).catch(() => { });
+    fetch(`${API_BASE}/alerts/config`).then(r => r.json()).then(setConfig).catch(() => { });
+  }, []);
+  const saveConfig = async () => {
+    await fetch(`${API_BASE}/alerts/config`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+    setSaved(true); setTimeout(() => setSaved(false), 2500); showToast("Alert config saved!", "success");
   };
-  const toggleRule=async(rule)=>{
-    const updated={...rule,enabled:!rule.enabled};
-    await fetch(`${API_BASE}/alerts/rules/${rule.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updated)});
-    setRules(p=>p.map(r=>r.id===rule.id?updated:r));
+  const toggleRule = async (rule) => {
+    const updated = { ...rule, enabled: !rule.enabled };
+    await fetch(`${API_BASE}/alerts/rules/${rule.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
+    setRules(p => p.map(r => r.id === rule.id ? updated : r));
   };
-  const toggleChannel=async(rule,channel)=>{
-    const channels=rule.channels.includes(channel)?rule.channels.filter(c=>c!==channel):[...rule.channels,channel];
-    const updated={...rule,channels};
-    await fetch(`${API_BASE}/alerts/rules/${rule.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updated)});
-    setRules(p=>p.map(r=>r.id===rule.id?updated:r));
+  const toggleChannel = async (rule, channel) => {
+    const channels = rule.channels.includes(channel) ? rule.channels.filter(c => c !== channel) : [...rule.channels, channel];
+    const updated = { ...rule, channels };
+    await fetch(`${API_BASE}/alerts/rules/${rule.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
+    setRules(p => p.map(r => r.id === rule.id ? updated : r));
   };
-  const sendTest=async()=>{await fetch(`${API_BASE}/alerts/test`,{method:"POST"});showToast("🧪 Test alert fired!","warning",4000);};
-  const requestNotif=async()=>{const p=await Notification.requestPermission();setNotifPerm(p);if(p==="granted")showToast("✅ Browser notifications enabled!","success");};
-  const CHANNELS=["browser","webhook","slack","discord","email"];
-  const CH_ICONS={browser:"🔔",webhook:"🌐",slack:"💬",discord:"🎮",email:"📧"};
+  const sendTest = async () => { await fetch(`${API_BASE}/alerts/test`, { method: "POST" }); showToast("🧪 Test alert fired!", "warning", 4000); };
+  const requestNotif = async () => { const p = await Notification.requestPermission(); setNotifPerm(p); if (p === "granted") showToast("✅ Browser notifications enabled!", "success"); };
+  const CHANNELS = ["browser", "webhook", "slack", "discord", "email"];
+  const CH_ICONS = { browser: "🔔", webhook: "🌐", slack: "💬", discord: "🎮", email: "📧" };
   return (
     <div className="view-content">
       <div className="page-header"><h1>⚙ Alert Settings</h1><p className="page-sub">Configure alert rules and notification channels</p></div>
-      <div className="card" style={{borderLeft:notifPerm==="granted"?"4px solid #22c55e":"4px solid #d97706"}}>
-        <div style={{padding:"16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div className="card" style={{ borderLeft: notifPerm === "granted" ? "4px solid #22c55e" : "4px solid #d97706" }}>
+        <div style={{ padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{fontWeight:600,marginBottom:"2px"}}>🔔 Browser Notifications</div>
-            <div style={{fontSize:"12px",color:"var(--text-muted)"}}>Status: <strong style={{color:notifPerm==="granted"?"#22c55e":"#d97706"}}>{notifPerm}</strong></div>
+            <div style={{ fontWeight: 600, marginBottom: "2px" }}>🔔 Browser Notifications</div>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Status: <strong style={{ color: notifPerm === "granted" ? "#22c55e" : "#d97706" }}>{notifPerm}</strong></div>
           </div>
-          {notifPerm!=="granted"&&<button className="scan-btn" style={{padding:"8px 14px",fontSize:"12px"}} onClick={requestNotif}>Enable</button>}
+          {notifPerm !== "granted" && <button className="scan-btn" style={{ padding: "8px 14px", fontSize: "12px" }} onClick={requestNotif}>Enable</button>}
         </div>
       </div>
       <div className="card">
         <div className="card-header">🛡 Alert Rules</div>
-        {rules.map(rule=>(
-          <div key={rule.id} style={{padding:"14px 16px",borderBottom:"1px solid #0f1825",display:"flex",alignItems:"center",gap:"14px"}}>
-            <label className="toggle-switch" title={rule.enabled?"Disable":"Enable"}>
-              <input type="checkbox" checked={rule.enabled} onChange={()=>toggleRule(rule)} />
+        {rules.map(rule => (
+          <div key={rule.id} style={{ padding: "14px 16px", borderBottom: "1px solid #0f1825", display: "flex", alignItems: "center", gap: "14px" }}>
+            <label className="toggle-switch" title={rule.enabled ? "Disable" : "Enable"}>
+              <input type="checkbox" checked={rule.enabled} onChange={() => toggleRule(rule)} />
               <span className="toggle-slider" />
             </label>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:500,fontSize:"14px",marginBottom:"6px",color:rule.enabled?"#c8d0e0":"#5a6a80"}}>{rule.name}</div>
-              <div style={{display:"flex",gap:"6px"}}>
-                {CHANNELS.map(ch=>(
-                  <button key={ch} onClick={()=>toggleChannel(rule,ch)}
-                    style={{fontSize:"14px",background:rule.channels.includes(ch)?"#1a3050":"#131d30",border:`1px solid ${rule.channels.includes(ch)?"#3b82f6":"#1e2a40"}`,borderRadius:"6px",padding:"3px 8px",cursor:"pointer",transition:"all 0.15s"}}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px", color: rule.enabled ? "#c8d0e0" : "#5a6a80" }}>{rule.name}</div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {CHANNELS.map(ch => (
+                  <button key={ch} onClick={() => toggleChannel(rule, ch)}
+                    style={{ fontSize: "14px", background: rule.channels.includes(ch) ? "#1a3050" : "#131d30", border: `1px solid ${rule.channels.includes(ch) ? "#3b82f6" : "#1e2a40"}`, borderRadius: "6px", padding: "3px 8px", cursor: "pointer", transition: "all 0.15s" }}
                     title={ch}>{CH_ICONS[ch]}</button>
                 ))}
               </div>
@@ -2403,29 +2402,29 @@ function AlertSettingsView() {
       </div>
       <div className="card">
         <div className="card-header">🌐 Channel Configuration</div>
-        <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:"12px"}}>
-          {[{key:"url",label:"🌐 Webhook URL",ph:"https://your-webhook.com/hook"},{key:"slack",label:"💬 Slack Webhook",ph:"https://hooks.slack.com/services/..."},{key:"discord",label:"🎮 Discord Webhook",ph:"https://discord.com/api/webhooks/..."}]
-            .map(({key,label,ph})=>(
-            <div key={key}>
-              <label style={{fontSize:"12px",color:"var(--text-muted)",display:"block",marginBottom:"4px"}}>{label}</label>
-              <input className="scan-input" style={{width:"100%"}} value={config[key]||""} onChange={e=>setConfig(p=>({...p,[key]:e.target.value}))} placeholder={ph} />
+        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          {[{ key: "url", label: "🌐 Webhook URL", ph: "https://your-webhook.com/hook" }, { key: "slack", label: "💬 Slack Webhook", ph: "https://hooks.slack.com/services/..." }, { key: "discord", label: "🎮 Discord Webhook", ph: "https://discord.com/api/webhooks/..." }]
+            .map(({ key, label, ph }) => (
+              <div key={key}>
+                <label style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>{label}</label>
+                <input className="scan-input" style={{ width: "100%" }} value={config[key] || ""} onChange={e => setConfig(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} />
+              </div>
+            ))}
+          <div style={{ borderTop: "1px solid #1e2a40", paddingTop: "12px" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>📧 Email (optional — requires npm install nodemailer in backend)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: "8px", marginBottom: "8px" }}>
+              <input className="scan-input" placeholder="SMTP Host" value={config.email?.host || ""} onChange={e => setConfig(p => ({ ...p, email: { ...p.email, host: e.target.value } }))} />
+              <input className="scan-input" placeholder="Port" type="number" value={config.email?.port || 587} onChange={e => setConfig(p => ({ ...p, email: { ...p.email, port: e.target.value } }))} />
             </div>
-          ))}
-          <div style={{borderTop:"1px solid #1e2a40",paddingTop:"12px"}}>
-            <div style={{fontSize:"12px",color:"var(--text-muted)",marginBottom:"8px"}}>📧 Email (optional — requires npm install nodemailer in backend)</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 80px",gap:"8px",marginBottom:"8px"}}>
-              <input className="scan-input" placeholder="SMTP Host" value={config.email?.host||""} onChange={e=>setConfig(p=>({...p,email:{...p.email,host:e.target.value}}))} />
-              <input className="scan-input" placeholder="Port" type="number" value={config.email?.port||587} onChange={e=>setConfig(p=>({...p,email:{...p.email,port:e.target.value}}))} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+              <input className="scan-input" placeholder="SMTP User" value={config.email?.user || ""} onChange={e => setConfig(p => ({ ...p, email: { ...p.email, user: e.target.value } }))} />
+              <input className="scan-input" placeholder="Password" type="password" value={config.email?.pass || ""} onChange={e => setConfig(p => ({ ...p, email: { ...p.email, pass: e.target.value } }))} />
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}}>
-              <input className="scan-input" placeholder="SMTP User" value={config.email?.user||""} onChange={e=>setConfig(p=>({...p,email:{...p.email,user:e.target.value}}))} />
-              <input className="scan-input" placeholder="Password" type="password" value={config.email?.pass||""} onChange={e=>setConfig(p=>({...p,email:{...p.email,pass:e.target.value}}))} />
-            </div>
-            <input className="scan-input" style={{width:"100%"}} placeholder="Recipient email" value={config.email?.to||""} onChange={e=>setConfig(p=>({...p,email:{...p.email,to:e.target.value}}))} />
+            <input className="scan-input" style={{ width: "100%" }} placeholder="Recipient email" value={config.email?.to || ""} onChange={e => setConfig(p => ({ ...p, email: { ...p.email, to: e.target.value } }))} />
           </div>
-          <div style={{display:"flex",gap:"10px"}}>
-            <button className="scan-btn" onClick={saveConfig}>{saved?"✅ Saved!":"💾 Save Config"}</button>
-            <button className="scan-btn" style={{background:"#1e2a40"}} onClick={sendTest}>🧪 Send Test Alert</button>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button className="scan-btn" onClick={saveConfig}>{saved ? "✅ Saved!" : "💾 Save Config"}</button>
+            <button className="scan-btn" style={{ background: "#1e2a40" }} onClick={sendTest}>🧪 Send Test Alert</button>
           </div>
         </div>
       </div>
@@ -2435,49 +2434,49 @@ function AlertSettingsView() {
 
 // ── Search Modal ──────────────────────────────────────────────────────────────
 function SearchModal({ scans, onClose, onSelectScan }) {
-  const [q,setQ]=useState("");
-  const [sev,setSev]=useState("all");
-  const inputRef=useRef(null);
-  useEffect(()=>{inputRef.current?.focus();},[]);
-  const results=[];
-  for(const scan of scans.filter(s=>s.findings?.length)){
-    for(const f of scan.findings){
-      if(sev!=="all"&&f.severity!==sev)continue;
-      const ss=`${f.title} ${f.description||""} ${scan.domain}`.toLowerCase();
-      if(q&&!ss.includes(q.toLowerCase()))continue;
-      results.push({scan,finding:f});
-      if(results.length>=50)break;
+  const [q, setQ] = useState("");
+  const [sev, setSev] = useState("all");
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const results = [];
+  for (const scan of scans.filter(s => s.findings?.length)) {
+    for (const f of scan.findings) {
+      if (sev !== "all" && f.severity !== sev) continue;
+      const ss = `${f.title} ${f.description || ""} ${scan.domain}`.toLowerCase();
+      if (q && !ss.includes(q.toLowerCase())) continue;
+      results.push({ scan, finding: f });
+      if (results.length >= 50) break;
     }
-    if(results.length>=50)break;
+    if (results.length >= 50) break;
   }
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"16px",borderBottom:"1px solid #1e2a40"}}>
-          <input ref={inputRef} className="scan-input" style={{width:"100%",fontSize:"15px"}} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search findings across all scans..." />
-          <div style={{display:"flex",gap:"6px",marginTop:"10px",alignItems:"center"}}>
-            {["all","critical","high","medium","low"].map(s=>(
-              <button key={s} className={`filter-btn ${sev===s?`active ${s}`:""}`} onClick={()=>setSev(s)}>{s.charAt(0).toUpperCase()+s.slice(1)}</button>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px", borderBottom: "1px solid #1e2a40" }}>
+          <input ref={inputRef} className="scan-input" style={{ width: "100%", fontSize: "15px" }} value={q} onChange={e => setQ(e.target.value)} placeholder="Search findings across all scans..." />
+          <div style={{ display: "flex", gap: "6px", marginTop: "10px", alignItems: "center" }}>
+            {["all", "critical", "high", "medium", "low"].map(s => (
+              <button key={s} className={`filter-btn ${sev === s ? `active ${s}` : ""}`} onClick={() => setSev(s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
             ))}
-            <span style={{marginLeft:"auto",fontSize:"11px",color:"var(--text-muted)"}}>{results.length} result{results.length!==1?"s":""}</span>
+            <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--text-muted)" }}>{results.length} result{results.length !== 1 ? "s" : ""}</span>
           </div>
         </div>
-        <div style={{maxHeight:"380px",overflowY:"auto"}}>
-          {results.length===0?(
-            <div style={{padding:"40px",textAlign:"center",color:"var(--text-muted)"}}>{q?"No findings match your search":"Type to search across all scan findings..."}</div>
-          ):results.map(({scan,finding},i)=>(
-            <div key={i} className="search-result" onClick={()=>onSelectScan(scan.id)}>
-              <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"4px"}}>
+        <div style={{ maxHeight: "380px", overflowY: "auto" }}>
+          {results.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>{q ? "No findings match your search" : "Type to search across all scan findings..."}</div>
+          ) : results.map(({ scan, finding }, i) => (
+            <div key={i} className="search-result" onClick={() => onSelectScan(scan.id)}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                 <SeverityBadge severity={finding.severity} />
-                <span style={{fontSize:"13px",fontWeight:500,flex:1}}>{finding.title}</span>
+                <span style={{ fontSize: "13px", fontWeight: 500, flex: 1 }}>{finding.title}</span>
               </div>
-              <div style={{fontSize:"11px",color:"var(--text-muted)"}}><code style={{color:"#60a5fa"}}>{scan.domain}</code> · {finding.module}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}><code style={{ color: "#60a5fa" }}>{scan.domain}</code> · {finding.module}</div>
             </div>
           ))}
         </div>
-        <div style={{padding:"10px 16px",borderTop:"1px solid #1e2a40",fontSize:"11px",color:"var(--text-muted)",display:"flex",gap:"16px"}}>
-          <span><kbd style={{background:"#1e2a40",padding:"1px 5px",borderRadius:"3px"}}>↵</kbd> Open scan</span>
-          <span><kbd style={{background:"#1e2a40",padding:"1px 5px",borderRadius:"3px"}}>Esc</kbd> Close</span>
+        <div style={{ padding: "10px 16px", borderTop: "1px solid #1e2a40", fontSize: "11px", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
+          <span><kbd style={{ background: "#1e2a40", padding: "1px 5px", borderRadius: "3px" }}>↵</kbd> Open scan</span>
+          <span><kbd style={{ background: "#1e2a40", padding: "1px 5px", borderRadius: "3px" }}>Esc</kbd> Close</span>
         </div>
       </div>
     </div>
@@ -2486,26 +2485,26 @@ function SearchModal({ scans, onClose, onSelectScan }) {
 
 // ── Shortcuts Modal ───────────────────────────────────────────────────────────
 function ShortcutsModal({ onClose }) {
-  const shortcuts=[
-    {keys:"Ctrl+K", action:"Open global search"},
-    {keys:"Ctrl+N", action:"New scan / focus domain input"},
-    {keys:"Ctrl+H", action:"Go to Scan History"},
-    {keys:"Ctrl+D", action:"Go to Dashboard"},
-    {keys:"?",      action:"Show keyboard shortcuts"},
-    {keys:"Esc",    action:"Close modal"},
+  const shortcuts = [
+    { keys: "Ctrl+K", action: "Open global search" },
+    { keys: "Ctrl+N", action: "New scan / focus domain input" },
+    { keys: "Ctrl+H", action: "Go to Scan History" },
+    { keys: "Ctrl+D", action: "Go to Dashboard" },
+    { keys: "?", action: "Show keyboard shortcuts" },
+    { keys: "Esc", action: "Close modal" },
   ];
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{maxWidth:"400px"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"16px 20px",borderBottom:"1px solid #1e2a40",fontWeight:700,fontSize:"15px"}}>⌨ Keyboard Shortcuts</div>
-        {shortcuts.map(s=>(
-          <div key={s.keys} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 20px",borderBottom:"1px solid #0a1020",fontSize:"13px"}}>
-            <span style={{color:"var(--text-muted)"}}>{s.action}</span>
-            <kbd style={{background:"#1e2a40",padding:"2px 8px",borderRadius:"4px",fontSize:"11px",fontFamily:"monospace",flexShrink:0}}>{s.keys}</kbd>
+      <div className="modal-box" style={{ maxWidth: "400px" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #1e2a40", fontWeight: 700, fontSize: "15px" }}>⌨ Keyboard Shortcuts</div>
+        {shortcuts.map(s => (
+          <div key={s.keys} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px", borderBottom: "1px solid #0a1020", fontSize: "13px" }}>
+            <span style={{ color: "var(--text-muted)" }}>{s.action}</span>
+            <kbd style={{ background: "#1e2a40", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontFamily: "monospace", flexShrink: 0 }}>{s.keys}</kbd>
           </div>
         ))}
-        <div style={{padding:"12px 20px"}}>
-          <button className="scan-btn" style={{width:"100%",justifyContent:"center"}} onClick={onClose}>Close</button>
+        <div style={{ padding: "12px 20px" }}>
+          <button className="scan-btn" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>Close</button>
         </div>
       </div>
     </div>

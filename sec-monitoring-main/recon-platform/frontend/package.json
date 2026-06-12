@@ -12,9 +12,16 @@
     "start": "react-scripts start",
     "build": "react-scripts build"
   },
-  "proxy": "http://localhost:3001",
+  "proxy": "http://10.28.81.36:3001",
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version"
+    ]
   }
 }
