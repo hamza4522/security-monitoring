@@ -103,7 +103,9 @@ function findVulnerabilities(libName, detectedVersion, libraryEntry) {
       ? isVersionInRange(detectedVersion, vuln.atOrAbove, vuln.below)
       : vuln.below
         ? isVersionBelow(detectedVersion, vuln.below)
-        : true; // No version constraint — assume affected
+        : vuln.atOrAbove
+          ? cmpVer(detectedVersion, vuln.atOrAbove) >= 0  // At or above, no upper bound
+          : false; // No version constraint at all — skip to avoid false positives
 
     if (affected) {
       // Extract CVE IDs and advisory links

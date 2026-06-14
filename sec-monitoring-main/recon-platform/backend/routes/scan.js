@@ -224,16 +224,15 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       runner: (domain, onProgress) => {
         // Gather context from previously completed modules
         const webTechData = scan.modules.webTechFingerprint?.data;
-        // Handle multiTarget structure
-        const technologies = webTechData?.multiTarget
-          ? (webTechData.targetResults?.[0]?.technologies || [])
-          : (webTechData?.technologies || []);
-        const serviceData  = scan.modules.serviceFingerprint?.data;
-        const services     = serviceData?.multiTarget
-          ? (serviceData.targetResults?.[0]?.services || [])
-          : (serviceData?.services || []);
-        const serverHeader = services.map(s => s.banner || '').join(' ');
-        return runCVEEnrichment(domain, onProgress, { technologies, serverHeader });
+        // Handle multiTarget structure (take first — the primary domain result)
+        const primaryWebTech = webTechData?.multiTarget
+          ? webTechData.targetResults?.find(r => r?.domain === domain) || webTechData.targetResults?.[0]
+          : webTechData;
+        const technologies = primaryWebTech?.technologies || [];
+        // Extract server / x-powered-by from the detected response headers for version-aware queries
+        const serverHeader  = primaryWebTech?._responseHeaders?.server || '';
+        const poweredBy     = primaryWebTech?._responseHeaders?.['x-powered-by'] || '';
+        return runCVEEnrichment(domain, onProgress, { technologies, serverHeader, poweredBy });
       },
     },
     {

@@ -296,22 +296,18 @@ async function probeTakeover(subdomain, cnameTarget) {
 }
 
 function matchTakeoverDB(cnameChain, probeResult) {
-  const fullChain = cnameChain.join(' ');
   for (const entry of TAKEOVER_DB) {
-    // Check if any CNAME in chain matches
+    // Check if any CNAME in chain matches this service
     const cnameMatch = cnameChain.some(c => entry.cnames.some(pattern => pattern.test(c)));
     if (!cnameMatch) continue;
 
-    // Check body for fingerprint
+    // Require a body fingerprint match — status code alone is NOT sufficient
+    // (many services return 404 for normal requests without being vulnerable)
     const bodyMatch = entry.fingerprints.some(fp =>
       probeResult.body.toLowerCase().includes(fp.toLowerCase())
     );
-    // Check status code
-    const statusMatch = entry.statusCodes.includes(probeResult.status);
 
-    if (bodyMatch || (statusMatch && probeResult.body.length < 2000)) {
-      return entry;
-    }
+    if (bodyMatch) return entry;
   }
   return null;
 }

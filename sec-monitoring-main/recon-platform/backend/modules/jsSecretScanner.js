@@ -227,6 +227,7 @@ const SECRET_PATTERNS = [
     id: 'GENERIC-SECRET',
     name: 'Generic Secret / Password in Code',
     severity: 'high',
+    // Only flag when the value is NOT a common placeholder/example string
     regex: /(?:password|passwd|secret|api_key|apikey|auth_token|access_token|private_key)\s*[:=]\s*["']([^"']{8,60})["']/gi,
     desc: 'Hardcoded credential or secret value found in JavaScript.',
     fix: 'Remove hardcoded credentials. Use environment variables and server-side secret management.',
@@ -257,9 +258,11 @@ function findHighEntropyStrings(source) {
     const s = m[1];
     if (seen.has(s)) continue;
     seen.add(s);
-    // Skip common false positives
-    if (/^[A-Za-z]+$/.test(s)) continue; // all letters = probably a word
+    // Skip obvious false positives
+    if (/^[A-Za-z]+$/.test(s)) continue;        // all letters = probably a word
+    if (s.includes('/')) continue;               // file paths, URLs, base64 with slashes
     if (s.includes('http') || s.includes('www') || s.includes('cdn')) continue;
+    if (/^[0-9a-f]+$/i.test(s) && s.length < 32) continue; // short hex = likely a color or ID
     if (s.length < HE_MIN_LEN || s.length > HE_MAX_LEN) continue;
     const e = shannonEntropy(s);
     if (e >= ENTROPY_THRESH) {
@@ -322,11 +325,25 @@ function scanForSecrets(source, fileUrl) {
   const found = [];
   const seen = new Set();
 
+  // Placeholder/example values to exclude from GENERIC-SECRET matches
+  const PLACEHOLDER_VALS = new Set([
+    'your-secret', 'your_secret', 'your-api-key', 'your_api_key', 'changeme',
+    'password', 'secret', 'example', 'placeholder', 'xxxxxxxx', '********',
+    'your-password', 'your_password', 'supersecret', 'mysecret', 'test',
+    'abc123', '12345678', 'passw0rd', 'p@ssw0rd', 'enter_key_here',
+  ]);
+
   for (const pattern of SECRET_PATTERNS) {
     pattern.regex.lastIndex = 0; // reset global regex
     let m;
     while ((m = pattern.regex.exec(source)) !== null) {
       const match = m[1] || m[0];
+
+      // Skip placeholder values for generic secret pattern
+      if (pattern.id === 'GENERIC-SECRET' && PLACEHOLDER_VALS.has(match.toLowerCase())) continue;
+      // Also skip very short matches for generic secret (likely a test value)
+      if (pattern.id === 'GENERIC-SECRET' && match.length < 12) continue;
+
       const key = `${pattern.id}:${match.slice(0, 20)}`;
       if (seen.has(key)) continue;
       seen.add(key);

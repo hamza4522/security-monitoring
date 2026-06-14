@@ -43,7 +43,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Jenkins CI Server',
-    paths: ['/jenkins', '/jenkins/', '/'],
+    paths: ['/jenkins', '/jenkins/'],
     fingerprints: [/jenkins.*version|<title>.*jenkins/i],
     severity: 'critical',
     desc: 'Jenkins dashboard is publicly accessible. Unauthenticated Jenkins installations allow script console RCE.',
@@ -61,7 +61,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Grafana Dashboard',
-    paths: ['/grafana', '/grafana/', '/'],
+    paths: ['/grafana', '/grafana/'],
     fingerprints: [/<title>.*grafana|grafana labs/i],
     severity: 'high',
     desc: 'Grafana dashboard is publicly accessible. Default admin/admin credentials allow full takeover.',
@@ -97,7 +97,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'RabbitMQ Management',
-    paths: ['/rabbitmq', '/'],
+    paths: ['/rabbitmq', '/#rabbitmq'],
     fingerprints: [/rabbitmq management|rabbitmq.*login/i],
     severity: 'critical',
     desc: 'RabbitMQ Management UI is publicly accessible. Default guest/guest credentials may allow queue control.',
@@ -115,7 +115,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Portainer (Docker UI)',
-    paths: ['/portainer', '/#/init/admin', '/'],
+    paths: ['/portainer', '/#/init/admin'],
     fingerprints: [/portainer|docker container management/i],
     severity: 'critical',
     desc: 'Portainer Docker management UI is publicly accessible. Provides full Docker host control including container creation.',
@@ -205,7 +205,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Netdata Monitoring',
-    paths: ['/netdata', '/'],
+    paths: ['/netdata', '/netdata/'],
     fingerprints: [/netdata|<title>netdata/i],
     severity: 'high',
     desc: 'Netdata real-time monitoring dashboard is publicly accessible. Leaks system metrics and infrastructure details.',
@@ -214,7 +214,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Webmin Admin',
-    paths: ['/webmin', '/'],
+    paths: ['/webmin', '/webmin/'],
     fingerprints: [/webmin|<title>webmin/i],
     severity: 'critical',
     desc: 'Webmin web-based system administration interface is publicly accessible.',
@@ -656,9 +656,9 @@ async function runNucleiChecks(domain, onProgress) {
       try {
         const r = await safeFetch(baseUrl + path, { timeout: 6000 });
         if (r.status === 0 || r.status === 404) continue;
-        // Fingerprint match
+        // Fingerprint match — must match body or headers (no fallback on body length alone)
         const matches = panel.fingerprints.some(fp => fp.test(r.body) || fp.test(JSON.stringify(r.headers)));
-        if (matches || (r.status === 200 && r.body.length > 500 && path !== '/')) {
+        if (matches) {
           results.panelsFound.push({ name: panel.name, path, status: r.status });
           results.summary.panelsFound++;
           results.findings.push({

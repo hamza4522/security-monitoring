@@ -138,7 +138,7 @@ const PLATFORM_CHECKS = {
 
   Laravel: [
     { path: '/_ignition/execute-solution', name: 'Laravel Ignition RCE (CVE-2021-3129)', sev: 'critical',
-      detect: (r) => r.status !== 404 && r.status !== 403,
+      detect: (r) => r.ok && r.status === 200 && /ignition|flare|laravel.*error|whoops/i.test(r.text),
       desc: 'Ignition debug page is accessible. CVE-2021-3129 allows Remote Code Execution on Laravel ≤8.4.2.',
       fix: 'Update Laravel to ≥8.4.3. Set APP_DEBUG=false in production.' },
     { path: '/telescope', name: 'Laravel Telescope Debug Tool Exposed', sev: 'high',
@@ -187,16 +187,18 @@ const PLATFORM_CHECKS = {
 
   'Express.js': [
     { path: '/api/v1', name: 'Express API v1 Endpoint', sev: 'info',
-      detect: (r) => r.ok && r.status !== 404,
-      desc: 'API v1 endpoint exists. Check for missing authentication and rate limiting.',
+      // Require JSON response body to confirm it is a real API, not a catch-all SPA route
+      detect: (r) => r.ok && r.status === 200 && (r.headers['content-type'] || '').includes('json'),
+      desc: 'API v1 JSON endpoint exists. Check for missing authentication and rate limiting.',
       fix: 'Ensure all API endpoints require authentication and implement rate limiting.' },
   ],
 
   'Next.js': [
     { path: '/_next/static/', name: 'Next.js Static Assets Exposed', sev: 'info',
-      detect: (r) => r.status !== 404,
-      desc: 'Next.js static assets are accessible. Check build IDs for version disclosure.',
-      fix: 'Normal behavior, but ensure source maps are not exposed in production.' },
+      // Only flag if directory listing is enabled (index of), otherwise it's normal
+      detect: (r) => r.status === 200 && /index of|\[dir\]/i.test(r.text),
+      desc: 'Next.js static assets directory listing is enabled. Build IDs and chunk hashes are disclosed.',
+      fix: 'Disable directory listing on the web server. Ensure source maps are not exposed in production.' },
     { path: '/api/auth', name: 'Next.js Auth API Exposed', sev: 'info',
       detect: (r) => r.status !== 404,
       desc: 'Next.js auth API is present. Ensure NEXTAUTH_SECRET is set and all callbacks are secure.',

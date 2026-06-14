@@ -74,17 +74,25 @@ async function probeSwagger(baseUrl, onProgress) {
       const body = r.body;
       if (!body || body.length < 10) return;
 
-      // Must contain OpenAPI/Swagger signals to avoid false positives
-      const isSwagger = body.includes('"swagger"') || body.includes('"openapi"')
-        || body.includes("swagger:") || body.includes("openapi:")
-        || body.includes('"paths"') || body.includes('"info"');
-      if (!isSwagger) return;
+      // Stage 1: Quick keyword scan — must have a version-value pair for openapi/swagger
+      // Matches:  "openapi": "3.0.1"  |  openapi: "3.0.1"  |  swagger: "2.0"
+      const hasVersionDeclaration =
+        /["']?openapi["']?\s*:\s*["']?\d/i.test(body) ||
+        /["']?swagger["']?\s*:\s*["']?\d/i.test(body);
+      if (!hasVersionDeclaration) return;
 
-      const spec = tryJSON(body);
+      // Stage 2: Must also declare paths or endpoints
+      const hasPaths = body.includes('"paths"') || body.includes('paths:');
+      if (!hasPaths) return;
+
+      const spec       = tryJSON(body);
       const specVersion = spec?.openapi || spec?.swagger || 'unknown';
-      const title       = spec?.info?.title || 'API Spec';
-      const version     = spec?.info?.version || '?';
-      const endpoints   = spec?.paths ? Object.keys(spec.paths) : [];
+      // Validate specVersion is a real OpenAPI version (2.x or 3.x)
+      if (specVersion !== 'unknown' && !/^[23]\.\d/.test(specVersion)) return;
+
+      const title     = spec?.info?.title || 'API Spec';
+      const version   = spec?.info?.version || '?';
+      const endpoints = spec?.paths ? Object.keys(spec.paths) : [];
 
       found.push({
         type:       'openapi',
@@ -189,12 +197,25 @@ const REST_API_PATHS = [
 // Signals that indicate an actual API response (not just a landing page)
 function isApiResponse(status, headers, body) {
   const ct = headers['content-type'] || '';
-  if (ct.includes('json')) return true;
+  // Must be a 2xx response to be considered a live API endpoint
+  if (status < 200 || status >= 300) return false;
+  if (ct.includes('json')) {
+    // JSON content-type is a strong signal, but body must have meaningful content
+    const t = body.trim();
+    if (t.length < 2) return false;
+    // Reject trivially empty JSON: {}, [], "", 0, null, true/false
+    if (/^(\{\s*\}|\[\s*\]|null|true|false|0|".*")$/i.test(t)) return false;
+    return true;
+  }
   if (ct.includes('xml') && (body.includes('<api') || body.includes('<response') || body.includes('<resource'))) return true;
   if (!body || body.length < 2) return false;
   const t = body.trim();
-  // JSON object or array
-  if ((t.startsWith('{') || t.startsWith('[')) && t.length < 500000) return true;
+  // JSON object or array with actual content
+  if ((t.startsWith('{') || t.startsWith('[')) && t.length > 20 && t.length < 500000) {
+    // Must have at least one key to be a meaningful API response
+    if (t.startsWith('{') && !t.includes(':')) return false;
+    return true;
+  }
   return false;
 }
 

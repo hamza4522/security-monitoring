@@ -202,7 +202,9 @@ async function runVulnAssessment(domain, onProgress) {
   for (const method of ['PUT', 'DELETE', 'TRACE', 'PATCH', 'CONNECT']) {
     try {
       const r = await fetch(baseUrl, { method, signal: AbortSignal.timeout(5000) });
-      const allowed = r.status !== 405 && r.status !== 501 && r.status !== 403;
+      // Only flag as "allowed" on a genuine success response (200/204).
+      // 302, 401, 403, 405, 501 all mean the method is effectively blocked.
+      const allowed = (r.status === 200 || r.status === 204);
       results.checks.push({ category: 'HTTP Methods', name: method, status: allowed ? 'warn' : 'pass', value: `HTTP ${r.status}` });
       if (allowed) results.findings.push({ id: `VULN-METHOD-${method}`, severity: method === 'TRACE' ? 'high' : 'medium', title: `Dangerous HTTP Method Allowed: ${method}`, description: `${method} returned ${r.status}. This may expose CSRF/XST attack surface.`, module: 'vulnAssessment', remediation: `Disable the ${method} method on the web server if not required.` });
     } catch (_) {}
@@ -296,13 +298,13 @@ async function runVulnAssessment(domain, onProgress) {
     { path: '/server-info',              name: 'Apache Server Info',                   sev: 'high',     verify: 'Apache Server Information' },
     { path: '/server-status',            name: 'Apache Server Status',                 sev: 'high',     verify: 'Apache Status' },
     // ── Admin panels ──────────────────────────────────────────────────────
-    { path: '/admin',                    name: 'Admin Panel (/admin)',                  sev: 'high',     verify: null },
-    { path: '/admin/',                   name: 'Admin Panel (/admin/)',                 sev: 'high',     verify: null },
-    { path: '/admin.php',               name: 'Admin Panel (admin.php)',                sev: 'high',     verify: null },
-    { path: '/administrator',           name: 'Administrator Panel',                   sev: 'high',     verify: null },
-    { path: '/backend',                 name: 'Backend Panel',                         sev: 'high',     verify: null },
-    { path: '/manage',                  name: 'Management Panel',                      sev: 'high',     verify: null },
-    { path: '/management',             name: 'Management Panel (/management)',          sev: 'high',     verify: null },
+    { path: '/admin',                    name: 'Admin Panel (/admin)',                  sev: 'high',     verify: 'login' },
+    { path: '/admin/',                   name: 'Admin Panel (/admin/)',                 sev: 'high',     verify: 'login' },
+    { path: '/admin.php',               name: 'Admin Panel (admin.php)',                sev: 'high',     verify: 'login' },
+    { path: '/administrator',           name: 'Administrator Panel',                   sev: 'high',     verify: 'administrator' },
+    { path: '/backend',                 name: 'Backend Panel',                         sev: 'high',     verify: 'login' },
+    { path: '/manage',                  name: 'Management Panel',                      sev: 'high',     verify: 'manage' },
+    { path: '/management',             name: 'Management Panel (/management)',          sev: 'high',     verify: 'management' },
     { path: '/phpmyadmin',             name: 'phpMyAdmin',                             sev: 'critical', verify: 'phpMyAdmin' },
     { path: '/pma',                    name: 'phpMyAdmin (/pma)',                      sev: 'critical', verify: 'phpMyAdmin' },
     { path: '/myadmin',                name: 'phpMyAdmin (/myadmin)',                  sev: 'critical', verify: 'phpMyAdmin' },
@@ -389,17 +391,22 @@ async function runVulnAssessment(domain, onProgress) {
       backupChecks.push((async () => {
         const path = `/${t}${ext}`;
         const r = await safeFetch(baseUrl + path, { timeout: 4000 });
-        if (r.status === 200 && r.body.length > 100) {
-          results.checks.push({ category: 'Backup Files', name: `${t}${ext}`, status: 'fail', value: `${path} → 200 OK` });
-          results.findings.push({
-            id: `VULN-BACKUP-${path.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
-            severity: t.includes('config') || t.includes('wp-config') ? 'critical' : 'high',
-            title: `Backup File Exposed: ${t}${ext}`,
-            description: `Editor/backup copy ${path} is publicly accessible. It may contain source code or credentials in plaintext.`,
-            module: 'vulnAssessment', affected: baseUrl + path,
-            remediation: `Delete backup files from the web root: rm ${path}. Add *.bak, *.old to .gitignore and web server deny rules.`,
-          });
+        if (r.status !== 200 || !r.body || r.body.length < 100) return;
+        // Apply soft-404 detection: skip if body length is within 15% of soft-404 length
+        if (hasSoft404) {
+          const diff = Math.abs(r.body.length - soft404BodyLen);
+          const threshold = Math.max(soft404BodyLen * 0.15, 100);
+          if (diff < threshold) return; // Looks like soft-404, not a real file
         }
+        results.checks.push({ category: 'Backup Files', name: `${t}${ext}`, status: 'fail', value: `${path} → 200 OK` });
+        results.findings.push({
+          id: `VULN-BACKUP-${path.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
+          severity: t.includes('config') || t.includes('wp-config') ? 'critical' : 'high',
+          title: `Backup File Exposed: ${t}${ext}`,
+          description: `Editor/backup copy ${path} is publicly accessible. It may contain source code or credentials in plaintext.`,
+          module: 'vulnAssessment', affected: baseUrl + path,
+          remediation: `Delete backup files from the web root: rm ${path}. Add *.bak, *.old to .gitignore and web server deny rules.`,
+        });
       })());
     }
   }
@@ -428,11 +435,12 @@ async function runVulnAssessment(domain, onProgress) {
           module: 'vulnAssessment',
           remediation: 'Remove sensitive paths from robots.txt. Use authentication instead of obscurity.',
         });
-        // Probe top disallowed paths
+        // Probe top disallowed paths — use the probe() helper for soft-404 awareness
         const probeThese = disallowed.slice(0, 8);
         await Promise.allSettled(probeThese.map(async (p) => {
-          const pr = await safeFetch(baseUrl + p, { timeout: 4000 });
-          if (pr.status === 200) {
+          // Use probe() which already handles soft-404 detection
+          const isReal = await probe(p, null);
+          if (isReal) {
             results.findings.push({
               id: `VULN-ROBOTS-ACCESS-${p.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
               severity: 'medium',

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * cveEnrichment.js — NVD CVE API v2 Integration
+ * cveEnrichment.js — NVD CVE API v2 Integration (Version-Aware)
  *
  * Queries the NIST National Vulnerability Database (NVD) API v2 using
  * detected technologies from webTechFingerprint / server headers.
@@ -71,33 +71,109 @@ function cvssToSeverity(score) {
 
 // Extract CVSS v3 score from NVD CVE item
 function extractScore(cve) {
-  // Try CVSS v3.1 then v3.0 then v2
   const metrics = cve.metrics;
   if (metrics?.cvssMetricV31?.[0]) {
     return {
-      score: metrics.cvssMetricV31[0].cvssData.baseScore,
-      vector: metrics.cvssMetricV31[0].cvssData.vectorString,
+      score:   metrics.cvssMetricV31[0].cvssData.baseScore,
+      vector:  metrics.cvssMetricV31[0].cvssData.vectorString,
       version: '3.1',
     };
   }
   if (metrics?.cvssMetricV30?.[0]) {
     return {
-      score: metrics.cvssMetricV30[0].cvssData.baseScore,
-      vector: metrics.cvssMetricV30[0].cvssData.vectorString,
+      score:   metrics.cvssMetricV30[0].cvssData.baseScore,
+      vector:  metrics.cvssMetricV30[0].cvssData.vectorString,
       version: '3.0',
     };
   }
   if (metrics?.cvssMetricV2?.[0]) {
     return {
-      score: metrics.cvssMetricV2[0].cvssData.baseScore,
-      vector: metrics.cvssMetricV2[0].cvssData.vectorString,
+      score:   metrics.cvssMetricV2[0].cvssData.baseScore,
+      vector:  metrics.cvssMetricV2[0].cvssData.vectorString,
       version: '2.0',
     };
   }
   return { score: 0, vector: '', version: 'N/A' };
 }
 
-// ── Technology → Search Keywords mapping ─────────────────────────────────────
+// ── Simple semver comparison (handles 1.2.3 and 1.2.3.4) ─────────────────────
+function parseVer(v) {
+  return (v || '').split('.').map(x => parseInt(x, 10) || 0);
+}
+function cmpVer(a, b) {
+  const pa = parseVer(a), pb = parseVer(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/**
+ * Check if a CVE's CPE configuration includes the detected version.
+ * Returns true when:
+ *  - No CPE nodes exist (can't filter → include conservatively)
+ *  - At least one CPE match range covers detectedVersion
+ */
+function cveAffectsVersion(cve, detectedVersion) {
+  if (!detectedVersion) return true; // No version known — include all results
+
+  const configs = cve.configurations || [];
+  if (configs.length === 0) return true; // No config data — include conservatively
+
+  for (const config of configs) {
+    const nodes = config.nodes || [];
+    for (const node of nodes) {
+      const matches = node.cpeMatch || [];
+      for (const m of matches) {
+        if (!m.vulnerable) continue;
+
+        const vStart  = m.versionStartIncluding || m.versionStartExcluding || null;
+        const vEnd    = m.versionEndIncluding   || m.versionEndExcluding   || null;
+        const startEx = !!m.versionStartExcluding;
+        const endEx   = !!m.versionEndExcluding;
+
+        // If no version range is specified, use the CPE version string itself
+        if (!vStart && !vEnd) {
+          // Extract version from CPE URI: cpe:2.3:a:vendor:product:VERSION:...
+          const cpeVer = (m.criteria || '').split(':')[5];
+          if (cpeVer && cpeVer !== '*' && cpeVer !== '-') {
+            if (cmpVer(detectedVersion, cpeVer) === 0) return true;
+          } else {
+            return true; // Wildcard CPE — include
+          }
+          continue;
+        }
+
+        // Check start bound
+        let startOk = true;
+        if (vStart) {
+          startOk = startEx
+            ? cmpVer(detectedVersion, vStart) > 0
+            : cmpVer(detectedVersion, vStart) >= 0;
+        }
+
+        // Check end bound
+        let endOk = true;
+        if (vEnd) {
+          endOk = endEx
+            ? cmpVer(detectedVersion, vEnd) < 0
+            : cmpVer(detectedVersion, vEnd) <= 0;
+        }
+
+        if (startOk && endOk) return true;
+      }
+    }
+  }
+
+  return false; // Detected version not in any CPE range
+}
+
+// ── Technology → NVD Search Keywords mapping ─────────────────────────────────
+// Maps tech name → NVD keyword(s). Ordered most-specific first.
+// Technologies that are too generic (java, python) are excluded unless
+// a version was detected, so we can form a specific keyword query.
 
 const TECH_KEYWORD_MAP = {
   // Web servers
@@ -107,12 +183,11 @@ const TECH_KEYWORD_MAP = {
   'IIS':               'microsoft iis',
   'Lighttpd':          'lighttpd',
   'Caddy':             'caddy server',
-  // Languages / Runtimes
+  'OpenResty':         'openresty',
+  'Tomcat':            'apache tomcat',
+  // Languages / Runtimes — only queried when a version is known
   'PHP':               'php',
   'Node.js':           'node.js',
-  'Python':            'python',
-  'Ruby':              'ruby',
-  'Java':              'java',
   // Frameworks
   'WordPress':         'wordpress',
   'Drupal':            'drupal',
@@ -122,13 +197,8 @@ const TECH_KEYWORD_MAP = {
   'Django':            'django',
   'Spring':            'spring framework',
   'Struts':            'apache struts',
-  'Express':           'express.js',
-  // Databases
-  'MySQL':             'mysql',
-  'PostgreSQL':        'postgresql',
-  'MongoDB':           'mongodb',
-  'Redis':             'redis',
-  'Elasticsearch':     'elasticsearch',
+  'Express.js':        'express.js',
+  'Ruby on Rails':     'ruby on rails',
   // CI/CD & Monitoring
   'Jenkins':           'jenkins',
   'Grafana':           'grafana',
@@ -138,35 +208,64 @@ const TECH_KEYWORD_MAP = {
   'Jira':              'atlassian jira',
   // Infra
   'OpenSSL':           'openssl',
-  'Tomcat':            'apache tomcat',
   'JBoss':             'jboss',
   'WebLogic':          'oracle weblogic',
   'Kubernetes':        'kubernetes',
   'Docker':            'docker',
 };
 
-// Extract keywords from detected technologies + server header
-function extractKeywords(technologies = [], serverHeader = '', poweredBy = '') {
-  const keywords = new Set();
+// Technologies too generic to query without a version (causes thousands of
+// unrelated CVEs). Only queried when version is detected.
+const VERSION_REQUIRED = new Set(['php', 'node.js', 'java', 'python', 'ruby', 'mysql', 'postgresql', 'mongodb', 'redis', 'elasticsearch']);
 
-  // Map detected tech names
+/**
+ * Build a list of { keyword, version } query targets from detected technologies.
+ * Returns only entries worth querying — i.e. specific products OR generic ones with a known version.
+ */
+function buildQueryTargets(technologies = [], serverHeader = '', poweredBy = '') {
+  const targets = new Map(); // keyword → version (latest version wins)
+
   for (const tech of technologies) {
-    const name = tech.name || tech;
+    const name    = tech.name || tech;
+    const version = tech.version || null;
+
     for (const [key, kw] of Object.entries(TECH_KEYWORD_MAP)) {
       if (name.toLowerCase().includes(key.toLowerCase())) {
-        keywords.add(kw);
+        // Skip generic techs with no version detected
+        if (VERSION_REQUIRED.has(kw) && !version) break;
+
+        // Prefer entries with a version
+        const existing = targets.get(kw);
+        if (!existing || (version && !existing.version)) {
+          targets.set(kw, { keyword: kw, version });
+        }
         break;
       }
     }
   }
 
-  // Fallback: parse raw server header
-  const combined = `${serverHeader} ${poweredBy}`.toLowerCase();
-  for (const [key, kw] of Object.entries(TECH_KEYWORD_MAP)) {
-    if (combined.includes(key.toLowerCase())) keywords.add(kw);
+  // Fallback: parse raw server / x-powered-by headers for version strings
+  // e.g. "Apache/2.4.51 (Ubuntu)" → keyword: "apache http server", version: "2.4.51"
+  const headerPatterns = [
+    { re: /Apache\/([\d.]+)/i,         kw: 'apache http server' },
+    { re: /nginx\/([\d.]+)/i,          kw: 'nginx' },
+    { re: /Microsoft-IIS\/([\d.]+)/i,  kw: 'microsoft iis' },
+    { re: /PHP\/([\d.]+)/i,            kw: 'php' },
+    { re: /Apache Tomcat\/([\d.]+)/i,  kw: 'apache tomcat' },
+    { re: /OpenResty\/([\d.]+)/i,      kw: 'openresty' },
+  ];
+  const combined = `${serverHeader} ${poweredBy}`;
+  for (const { re, kw } of headerPatterns) {
+    const m = combined.match(re);
+    if (m) {
+      const existing = targets.get(kw);
+      if (!existing || !existing.version) {
+        targets.set(kw, { keyword: kw, version: m[1] });
+      }
+    }
   }
 
-  return [...keywords];
+  return [...targets.values()];
 }
 
 // ── Main Export ───────────────────────────────────────────────────────────────
@@ -187,33 +286,37 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
   } = context;
 
   onProgress('CVE Enrichment: extracting technology keywords...');
-  const keywords = extractKeywords(technologies, serverHeader, poweredBy);
-  results.queriedKeywords = keywords;
+  const queryTargets = buildQueryTargets(technologies, serverHeader, poweredBy);
+  results.queriedKeywords = queryTargets.map(t => t.version ? `${t.keyword} ${t.version}` : t.keyword);
 
-  if (keywords.length === 0) {
-    onProgress('CVE Enrichment: no identifiable technologies — skipping NVD lookup');
+  if (queryTargets.length === 0) {
+    onProgress('CVE Enrichment: no identifiable technologies with sufficient specificity — skipping NVD lookup');
     return results;
   }
 
-  onProgress(`CVE Enrichment: querying NVD for ${keywords.length} technologies (${keywords.slice(0, 3).join(', ')}${keywords.length > 3 ? '...' : ''})`);
+  const preview = queryTargets.slice(0, 3).map(t => t.version ? `${t.keyword}@${t.version}` : t.keyword).join(', ');
+  onProgress(`CVE Enrichment: querying NVD for ${queryTargets.length} technologies (${preview}${queryTargets.length > 3 ? '...' : ''})`);
 
-  // Limit to first 6 keywords to avoid too many API calls
-  const queryKeywords = keywords.slice(0, 6);
-  const delaySec = API_KEY ? 0.5 : 6; // Rate-limit safe delays
+  // Limit to first 6 query targets to stay within rate limits
+  const limited = queryTargets.slice(0, 6);
+  const delaySec = API_KEY ? 0.5 : 6;
 
-  for (let i = 0; i < queryKeywords.length; i++) {
-    const kw = queryKeywords[i];
+  for (let i = 0; i < limited.length; i++) {
+    const { keyword, version } = limited[i];
+    const searchTerm = version ? `${keyword} ${version}` : keyword;
 
     if (i > 0) {
-      onProgress(`CVE Enrichment: querying NVD for "${kw}" (${i + 1}/${queryKeywords.length})...`);
+      onProgress(`CVE Enrichment: querying NVD for "${searchTerm}" (${i + 1}/${limited.length})...`);
       await sleep(delaySec * 1000);
     }
 
     try {
       const data = await nvdFetch({
-        keywordSearch: kw,
-        resultsPerPage: 5,  // Top 5 most recently published CVEs per technology
-        startIndex: 0,
+        keywordSearch:   searchTerm,
+        resultsPerPage:  version ? 10 : 5,   // More results when version-specific
+        startIndex:      0,
+        // Sort by CVSS score (NVD API v2 supports cvssV3Severity param)
+        ...(version ? {} : {}),
       });
 
       if (!data) continue;
@@ -224,23 +327,32 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
         const cve = item.cve;
         if (!cve) continue;
 
-        const cveId      = cve.id;
-        const published  = cve.published?.split('T')[0] || 'Unknown';
-        const desc       = cve.descriptions?.find(d => d.lang === 'en')?.value || 'No description available.';
-        const scoreInfo  = extractScore(cve);
-        const severity   = cvssToSeverity(scoreInfo.score);
-        const nvdUrl     = `https://nvd.nist.gov/vuln/detail/${cveId}`;
+        // ── Version filtering ─────────────────────────────────────────────
+        // If we detected a specific version, only include CVEs that cover it.
+        if (version && !cveAffectsVersion(cve, version)) continue;
+
+        const cveId     = cve.id;
+        const published = cve.published?.split('T')[0] || 'Unknown';
+        const desc      = cve.descriptions?.find(d => d.lang === 'en')?.value || 'No description available.';
+        const scoreInfo = extractScore(cve);
+        const severity  = cvssToSeverity(scoreInfo.score);
+        const nvdUrl    = `https://nvd.nist.gov/vuln/detail/${cveId}`;
 
         // Deduplicate by CVE ID
         if (results.cveFindings.some(f => f.cveId === cveId)) continue;
 
+        // Skip info-level CVEs (score 0) — not actionable
+        if (scoreInfo.score === 0) continue;
+
+        const versionTag = version ? ` v${version}` : '';
         results.cveFindings.push({
           cveId,
-          keyword: kw,
+          keyword:     keyword,
+          version:     version || null,
           published,
-          cvssScore: scoreInfo.score,
+          cvssScore:   scoreInfo.score,
           cvssVersion: scoreInfo.version,
-          cvssVector: scoreInfo.vector,
+          cvssVector:  scoreInfo.vector,
           severity,
           description: desc,
           nvdUrl,
@@ -249,7 +361,7 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
         results.findings.push({
           id:          `CVE-ENRICH-${cveId}`,
           severity,
-          title:       `${cveId} — ${kw.charAt(0).toUpperCase() + kw.slice(1)} (CVSS ${scoreInfo.score})`,
+          title:       `${cveId} — ${keyword.charAt(0).toUpperCase() + keyword.slice(1)}${versionTag} (CVSS ${scoreInfo.score})`,
           description: `[NVD] ${desc.slice(0, 300)}${desc.length > 300 ? '...' : ''}`,
           module:      'cveEnrichment',
           affected:    nvdUrl,
@@ -262,7 +374,7 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
         results.summary.total++;
       }
     } catch (err) {
-      onProgress(`CVE Enrichment: error querying NVD for "${kw}": ${err.message}`);
+      onProgress(`CVE Enrichment: error querying NVD for "${searchTerm}": ${err.message}`);
     }
   }
 
