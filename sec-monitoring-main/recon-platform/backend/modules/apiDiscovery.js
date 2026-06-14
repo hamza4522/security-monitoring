@@ -270,7 +270,7 @@ async function parseJSFiles(baseUrl, html, onProgress) {
     try {
       const srcHost = new URL(src).hostname;
       const baseHost = new URL(baseUrl).hostname;
-      if (srcHost !== baseHost) return; // skip CDN scripts
+      if (srcHost !== baseHost) continue; // skip CDN scripts
     } catch (_) {}
     scriptUrls.push(src);
   }

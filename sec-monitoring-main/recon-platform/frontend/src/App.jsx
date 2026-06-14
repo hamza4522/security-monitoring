@@ -6,8 +6,8 @@ import {
 } from "recharts";
 import "./App.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
-const WS_BASE = process.env.REACT_APP_WS_URL || "ws://localhost:3001";
+const API_BASE = process.env.REACT_APP_API_URL || `http://${window.location.hostname}:3001/api`;
+const WS_BASE = process.env.REACT_APP_WS_URL || `ws://${window.location.hostname}:3001`;
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 const SEVERITY_CONFIG = {
