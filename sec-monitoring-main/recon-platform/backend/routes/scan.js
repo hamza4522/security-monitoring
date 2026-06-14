@@ -14,6 +14,9 @@ const { runNucleiChecks }      = require('../modules/nucleiChecks');
 const { runJSSecretScanner }   = require('../modules/jsSecretScanner');
 const { runSubdomainTakeover } = require('../modules/subdomainTakeover');
 const { runWAFDetector }       = require('../modules/wafDetector');
+const { runCVEEnrichment }     = require('../modules/cveEnrichment');
+const { runRetireJsChecker }   = require('../modules/retireJsChecker');
+const { runAPIDiscovery }      = require('../modules/apiDiscovery');
 const { calculateRiskScore }   = require('../utils/riskScoring');
 
 module.exports = (scans, broadcast, alertEngine = null) => {
@@ -69,6 +72,9 @@ module.exports = (scans, broadcast, alertEngine = null) => {
         subdomainTakeover:  { status: 'pending', data: null },
         wapitiscan:         { status: 'pending', data: null },
         cmsVulnScan:        { status: 'pending', data: null },
+        cveEnrichment:      { status: 'pending', data: null },
+        retireJsChecker:    { status: 'pending', data: null },
+        apiDiscovery:       { status: 'pending', data: null },
       },
       findings: [],
       riskScore: null,
@@ -210,6 +216,40 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
     },
     { key: 'wapitiscan',        label: 'Active Web Attacks',       runner: runWapitiScan,           weight: 10 },
     { key: 'cmsVulnScan',       label: 'CMS Vulnerability Scan',  runner: runCMSVulnScan,          weight: 9 },
+    {
+      // CVE Enrichment: runs after webTechFingerprint to pass detected tech context
+      key: 'cveEnrichment',
+      label: 'NVD CVE Enrichment',
+      weight: 8,
+      runner: (domain, onProgress) => {
+        // Gather context from previously completed modules
+        const webTechData = scan.modules.webTechFingerprint?.data;
+        // Handle multiTarget structure
+        const technologies = webTechData?.multiTarget
+          ? (webTechData.targetResults?.[0]?.technologies || [])
+          : (webTechData?.technologies || []);
+        const serviceData  = scan.modules.serviceFingerprint?.data;
+        const services     = serviceData?.multiTarget
+          ? (serviceData.targetResults?.[0]?.services || [])
+          : (serviceData?.services || []);
+        const serverHeader = services.map(s => s.banner || '').join(' ');
+        return runCVEEnrichment(domain, onProgress, { technologies, serverHeader });
+      },
+    },
+    {
+      // Retire.js: scan target JS files against the vulnerability database
+      key: 'retireJsChecker',
+      label: 'Retire.js Library Check',
+      weight: 7,
+      runner: runRetireJsChecker,
+    },
+    {
+      // API Discovery: enumerate public API endpoints via 9 detection techniques
+      key: 'apiDiscovery',
+      label: 'Public API Discovery',
+      weight: 9,
+      runner: runAPIDiscovery,
+    },
   ];
 
   // Global scan timeout — ensures scan ALWAYS finishes
@@ -239,7 +279,8 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
         const multiTargetModules = new Set([
           'dnsAssessment', 'portScan', 'serviceFingerprint', 'webTechFingerprint',
           'wafDetector', 'vulnAssessment', 'nucleiChecks', 'jsSecretScanner',
-          'wapitiscan', 'cmsVulnScan'
+          'wapitiscan', 'cmsVulnScan', 'retireJsChecker',
+          // cveEnrichment runs only for the primary domain (context-dependent)
         ]);
 
         if (multiTargetModules.has(mod.key)) {

@@ -6,8 +6,8 @@ import {
 } from "recharts";
 import "./App.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://0.0.0.0:3001/api";
-const WS_BASE = process.env.REACT_APP_WS_URL || "ws://0.0.0.0:3001";
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
+const WS_BASE = process.env.REACT_APP_WS_URL || "ws://localhost:3001";
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 const SEVERITY_CONFIG = {
@@ -501,6 +501,23 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
   const wafData = scan.modules?.wafDetector?.data;
   const wafBadge = wafData?.isProtected ? ` 🛡️` : "";
 
+  const vulnData = scan.modules?.vulnAssessment?.data;
+  // Handle multi-target vuln data — pick the first target result for badge
+  const vulnSummary = vulnData?.multiTarget
+    ? (vulnData.targetResults?.[0]?.summary || {})
+    : (vulnData?.summary || {});
+  const vulnBadge = vulnSummary.fail > 0 ? ` ❌${vulnSummary.fail}` : vulnSummary.pass > 0 ? " ✓" : "";
+
+  const cveData = scan.modules?.cveEnrichment?.data;
+  const cveBadge = cveData?.summary?.total > 0 ? ` 🔴${cveData.summary.total}` : "";
+
+  const retireData = scan.modules?.retireJsChecker?.data;
+  const retireBadge = retireData?.summary?.total > 0 ? ` ⚠️${retireData.summary.total}` : "";
+
+  const apiData = scan.modules?.apiDiscovery?.data;
+  const apiBadge = apiData?.summary?.total > 0 ? ` 🔗${apiData.summary.total}` :
+    apiData?.jsEndpoints?.length > 0 ? ` 🔗${apiData.jsEndpoints.length}` : "";
+
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "whois", label: "🌐 WHOIS & IP" },
@@ -511,7 +528,11 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
     { id: "services", label: "Services" },
     { id: "webtech", label: "Web Tech" },
     { id: "waf", label: `WAF/CDN${wafBadge}` },
+    { id: "vuln", label: `🛡 Vuln Assess${vulnBadge}` },
     { id: "nuclei", label: `🎯 Nuclei${nucleiBadge}` },
+    { id: "cve", label: `📋 CVE Lookup${cveBadge}` },
+    { id: "retirejs", label: `📦 Retire.js${retireBadge}` },
+    { id: "api", label: `🔗 API Discover${apiBadge}` },
     { id: "secrets", label: `JS Secrets${jsBadge}` },
     { id: "takeover", label: `Takeover${takeoverBadge}` },
     { id: "webattacks", label: `⚔ Web Attacks ${scan.modules?.wapitiscan?.data?.findings?.length ? `(${scan.modules.wapitiscan.data.findings.length})` : ""}` },
@@ -575,7 +596,11 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
         {activeTab === "services" && <ServicesTab data={scan.modules?.serviceFingerprint?.data} />}
         {activeTab === "webtech" && <WebTechTab data={scan.modules?.webTechFingerprint?.data} />}
         {activeTab === "waf" && <WAFDetectorTab data={scan.modules?.wafDetector?.data} status={scan.modules?.wafDetector?.status} />}
+        {activeTab === "vuln" && <VulnAssessmentTab data={scan.modules?.vulnAssessment?.data} status={scan.modules?.vulnAssessment?.status} />}
         {activeTab === "nuclei" && <NucleiChecksTab data={scan.modules?.nucleiChecks?.data} status={scan.modules?.nucleiChecks?.status} />}
+        {activeTab === "cve" && <CVEEnrichmentTab data={scan.modules?.cveEnrichment?.data} status={scan.modules?.cveEnrichment?.status} />}
+        {activeTab === "retirejs" && <RetireJsTab data={scan.modules?.retireJsChecker?.data} status={scan.modules?.retireJsChecker?.status} />}
+        {activeTab === "api" && <APIDiscoveryTab data={scan.modules?.apiDiscovery?.data} status={scan.modules?.apiDiscovery?.status} />}
         {activeTab === "secrets" && <JSSecretTab data={scan.modules?.jsSecretScanner?.data} status={scan.modules?.jsSecretScanner?.status} />}
         {activeTab === "takeover" && <TakeoverTab data={scan.modules?.subdomainTakeover?.data} status={scan.modules?.subdomainTakeover?.status} />}
         {activeTab === "webattacks" && <WebAttacksTab data={scan.modules?.wapitiscan?.data} status={scan.modules?.wapitiscan?.status} />}
@@ -600,6 +625,9 @@ function ModulePipeline({ modules }) {
     { key: "wafDetector", label: "WAF/CDN" },
     { key: "vulnAssessment", label: "Vuln Assess" },
     { key: "nucleiChecks", label: "Nuclei" },
+    { key: "cveEnrichment", label: "CVE Lookup" },
+    { key: "retireJsChecker", label: "Retire.js" },
+    { key: "apiDiscovery", label: "API Discover" },
     { key: "jsSecretScanner", label: "JS Secrets" },
     { key: "subdomainTakeover", label: "Takeover" },
     { key: "wapitiscan", label: "Web Attacks" },
@@ -1570,7 +1598,7 @@ function WebAttacksTab({ data: rawData, status }) {
                   </td>
                   <td>
                     <span className={`status-pill ${row.status === "vulnerable" || row.status === "missing" ? "error" :
-                        row.status === "ok" || row.status === "not detected" ? "complete" : "running"
+                      row.status === "ok" || row.status === "not detected" ? "complete" : "running"
                       }`} style={{ fontSize: "0.75rem" }}>
                       {row.status === "vulnerable" ? "⚠ VULNERABLE" :
                         row.status === "missing" ? "✗ MISSING" :
@@ -2287,6 +2315,725 @@ function CMSScanTab({ data: rawData, status }) {
           <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No CMS-Specific Vulnerabilities Found</div>
           <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>{summary.checksRun || 0} checks run</div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vuln Assessment Tab ───────────────────────────────────────────────────────
+function VulnAssessmentTab({ data: rawData, status }) {
+  const isMulti = rawData?.multiTarget;
+  const [selectedTarget, setSelectedTarget] = useState(
+    isMulti ? rawData.targetResults[0]?.domain : null
+  );
+  const data = isMulti
+    ? (rawData.targetResults.find(t => t.domain === selectedTarget) || rawData.targetResults[0])
+    : rawData;
+  const [expanded, setExpanded] = useState(null);
+  const [filterCat, setFilterCat] = useState("all");
+
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🛡</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Vulnerability Assessment Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Checking HTTP security headers, cookies, SSL, sensitive files, and more.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Running vulnerability checks (120+ probes)...</div>
+    </div>
+  );
+
+  const { checks = [], findings = [], summary = {} } = data;
+  const STATUS_COLORS = { pass: "#22c55e", fail: "#e11d48", warn: "#d97706", info: "#0284c7" };
+  const STATUS_ICONS = { pass: "✓", fail: "✗", warn: "⚠", info: "ℹ" };
+
+  // Gather unique categories for filter
+  const cats = ["all", ...new Set(checks.map(c => c.category))];
+  const filteredChecks = filterCat === "all" ? checks : checks.filter(c => c.category === filterCat);
+
+  return (
+    <div className="tab-sections">
+      <TargetSelector rawData={rawData} selectedTarget={selectedTarget} setSelectedTarget={setSelectedTarget} />
+
+      {/* Summary bar */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
+        {[
+          { label: "Passed", value: summary.pass, color: "#22c55e" },
+          { label: "Failed", value: summary.fail, color: "#e11d48" },
+          { label: "Warnings", value: summary.warn, color: "#d97706" },
+          { label: "Info", value: summary.info, color: "#0284c7" },
+        ].map(s => (
+          <div key={s.label} className="card" style={{ padding: "14px", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: s.color }}>{s.value ?? 0}</div>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Category filter pills */}
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+        {cats.map(c => (
+          <button key={c} onClick={() => setFilterCat(c)}
+            style={{ padding: "4px 12px", borderRadius: "12px", border: `1px solid ${filterCat === c ? "#3b82f6" : "#1e2a40"}`, background: filterCat === c ? "#1a3050" : "transparent", cursor: "pointer", fontSize: "12px", color: filterCat === c ? "#60a5fa" : "var(--text-muted)" }}>
+            {c === "all" ? "All Categories" : c}
+          </button>
+        ))}
+      </div>
+
+      {/* Checks table */}
+      <div className="card">
+        <div className="card-header">🔍 Security Checks ({filteredChecks.length})</div>
+        <table className="data-table">
+          <thead><tr><th>Category</th><th>Check</th><th>Status</th><th>Value</th></tr></thead>
+          <tbody>
+            {filteredChecks.length === 0 ? (
+              <tr><td colSpan="4" style={{ textAlign: "center", padding: "16px", color: "var(--text-muted)" }}>No checks in this category.</td></tr>
+            ) : filteredChecks.map((c, i) => (
+              <tr key={i}>
+                <td><span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{c.category}</span></td>
+                <td style={{ fontWeight: 500, fontSize: "13px" }}>{c.name}</td>
+                <td>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: 600, color: STATUS_COLORS[c.status] || "#5a6a80", background: `${STATUS_COLORS[c.status] || "#5a6a80"}15` }}>
+                    {STATUS_ICONS[c.status] || "?"} {c.status?.toUpperCase()}
+                  </span>
+                </td>
+                <td><code style={{ fontSize: "11px", color: c.status === "fail" ? "#f87171" : "var(--text-muted)", wordBreak: "break-all" }}>{c.value}</code></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Findings */}
+      {findings.length > 0 && (
+        <div className="card">
+          <div className="card-header">🚨 Vulnerability Findings ({findings.length})</div>
+          <div className="findings-list" style={{ padding: "8px" }}>
+            {[...findings].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 5) - (SEVERITY_ORDER[b.severity] ?? 5)).map(f => (
+              <div key={f.id} className={`finding-card ${f.severity} ${expanded === f.id ? "expanded" : ""}`} onClick={() => setExpanded(expanded === f.id ? null : f.id)}>
+                <div className="finding-card-header">
+                  <SeverityBadge severity={f.severity} />
+                  <span className="finding-card-title">{f.title}</span>
+                  <span className="expand-icon">{expanded === f.id ? "▲" : "▼"}</span>
+                </div>
+                {expanded === f.id && (
+                  <div className="finding-card-body">
+                    <div className="finding-section"><div className="finding-section-label">Description</div>{f.description}</div>
+                    {f.affected && <div className="finding-section"><div className="finding-section-label">Affected</div><code style={{ wordBreak: "break-all" }}>{f.affected}</code></div>}
+                    {f.remediation && <div className="finding-section remediation"><div className="finding-section-label">Remediation</div>{f.remediation}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {findings.length === 0 && status === "complete" && (
+        <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+          <div style={{ fontSize: "2.5rem" }}>✅</div>
+          <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No Vulnerabilities Found</div>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>{checks.length} checks run, {summary.pass ?? 0} passed</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CVE Enrichment Tab (NVD API) ──────────────────────────────────────────────
+function CVEEnrichmentTab({ data, status }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📋</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>NVD CVE Lookup Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Will query the NIST National Vulnerability Database for detected technologies.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Querying NVD CVE API for detected technologies...</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>This may take 30–60s due to NVD rate limits.</div>
+    </div>
+  );
+
+  const { cveFindings = [], findings = [], summary = {}, queriedKeywords = [] } = data;
+
+  if (!summary.apiReachable && status === "complete") return (
+    <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+      <div style={{ fontSize: "2.5rem" }}>⚠️</div>
+      <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>NVD API Unreachable</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>Could not connect to the NIST NVD API. Check network connectivity or set NVD_API_KEY in .env for higher rate limits.</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "0.5rem" }}>Queried: {queriedKeywords.join(", ") || "none"}</div>
+    </div>
+  );
+
+  const CVSS_COLOR = (score) => score >= 9 ? "#e11d48" : score >= 7 ? "#ea580c" : score >= 4 ? "#d97706" : "#16a34a";
+
+  return (
+    <div className="tab-sections">
+      {/* Attribution notice */}
+      <div style={{ padding: "8px 14px", background: "#0d1a2d", borderRadius: "8px", fontSize: "11px", color: "var(--text-muted)", borderLeft: "3px solid #3b82f6" }}>
+        📢 This product uses data from the NVD API but is not endorsed or certified by the NVD. Data sourced from <a href="https://nvd.nist.gov" target="_blank" rel="noreferrer" style={{ color: "#60a5fa" }}>nvd.nist.gov</a>.
+      </div>
+
+      {/* Summary stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: "12px" }}>
+        {[
+          { label: "Total CVEs", value: summary.total, color: "#3b82f6" },
+          { label: "Critical", value: summary.critical, color: "#e11d48" },
+          { label: "High", value: summary.high, color: "#ea580c" },
+          { label: "Medium", value: summary.medium, color: "#d97706" },
+          { label: "Low", value: summary.low, color: "#16a34a" },
+        ].map(s => (
+          <div key={s.label} className="card" style={{ padding: "14px", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: s.color }}>{s.value ?? 0}</div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Queried technologies */}
+      {queriedKeywords.length > 0 && (
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Queried:</span>
+          {queriedKeywords.map(k => (
+            <span key={k} style={{ fontSize: "11px", background: "#1e2a40", padding: "3px 9px", borderRadius: "10px" }}>{k}</span>
+          ))}
+        </div>
+      )}
+
+      {/* CVE findings */}
+      {cveFindings.length > 0 ? (
+        <div className="card">
+          <div className="card-header">🔴 CVE Findings from NVD ({cveFindings.length})</div>
+          <div className="findings-list" style={{ padding: "8px" }}>
+            {cveFindings.map(cve => (
+              <div key={cve.cveId} className={`finding-card ${cve.severity} ${expanded === cve.cveId ? "expanded" : ""}`} onClick={() => setExpanded(expanded === cve.cveId ? null : cve.cveId)}>
+                <div className="finding-card-header">
+                  <SeverityBadge severity={cve.severity} />
+                  <code style={{ fontSize: "12px", color: "#60a5fa", flexShrink: 0 }}>{cve.cveId}</code>
+                  <span style={{ fontSize: "12px", background: `${CVSS_COLOR(cve.cvssScore)}20`, color: CVSS_COLOR(cve.cvssScore), padding: "1px 7px", borderRadius: "8px", flexShrink: 0 }}>CVSS {cve.cvssScore} v{cve.cvssVersion}</span>
+                  <span className="finding-card-title" style={{ fontSize: "12px" }}>{cve.keyword}</span>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)", flexShrink: 0 }}>📅 {cve.published}</span>
+                  <span className="expand-icon">{expanded === cve.cveId ? "▲" : "▼"}</span>
+                </div>
+                {expanded === cve.cveId && (
+                  <div className="finding-card-body">
+                    <div className="finding-section"><div className="finding-section-label">Description</div>{cve.description}</div>
+                    {cve.cvssVector && <div className="finding-section"><div className="finding-section-label">CVSS Vector</div><code style={{ fontSize: "11px" }}>{cve.cvssVector}</code></div>}
+                    <div className="finding-section remediation">
+                      <div className="finding-section-label">NVD Reference</div>
+                      <a href={cve.nvdUrl} target="_blank" rel="noreferrer" style={{ color: "#60a5fa", fontSize: "12px" }}>{cve.nvdUrl}</a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        status === "complete" && (
+          <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+            <div style={{ fontSize: "2.5rem" }}>✅</div>
+            <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No CVEs Found for Detected Technologies</div>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>Queried {queriedKeywords.length} technology keywords against the NVD API.</div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// ── Retire.js Tab ─────────────────────────────────────────────────────────────
+function RetireJsTab({ data, status }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📦</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Retire.js Check Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Will scan JavaScript libraries on target pages for known vulnerabilities.</div>
+    </div>
+  );
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 28, height: 28, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 600 }}>Loading Retire.js database & scanning JS files...</div>
+    </div>
+  );
+
+  const { libraryHits = [], findings = [], summary = {} } = data;
+
+  return (
+    <div className="tab-sections">
+      {/* DB status */}
+      <div style={{ padding: "8px 14px", background: "#0d1a2d", borderRadius: "8px", fontSize: "11px", color: "var(--text-muted)", borderLeft: `3px solid ${summary.dbLoaded ? "#22c55e" : "#e11d48"}` }}>
+        {summary.dbLoaded ? "✅ Retire.js vulnerability database loaded successfully." : "⚠️ Retire.js database could not be loaded (network issue)."}
+        {" "}Data sourced from <a href="https://github.com/RetireJS/retire.js" target="_blank" rel="noreferrer" style={{ color: "#60a5fa" }}>github.com/RetireJS/retire.js</a>.
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: "12px" }}>
+        {[
+          { label: "Total Issues", value: summary.total, color: "#3b82f6" },
+          { label: "Critical", value: summary.critical, color: "#e11d48" },
+          { label: "High", value: summary.high, color: "#ea580c" },
+          { label: "Medium", value: summary.medium, color: "#d97706" },
+          { label: "Low", value: summary.low, color: "#16a34a" },
+        ].map(s => (
+          <div key={s.label} className="card" style={{ padding: "14px", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: s.color }}>{s.value ?? 0}</div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Vulnerable libraries */}
+      {findings.length > 0 ? (
+        <div className="card">
+          <div className="card-header">📦 Vulnerable JavaScript Libraries ({findings.length})</div>
+          <div className="findings-list" style={{ padding: "8px" }}>
+            {[...findings].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 5) - (SEVERITY_ORDER[b.severity] ?? 5)).map(f => (
+              <div key={f.id} className={`finding-card ${f.severity} ${expanded === f.id ? "expanded" : ""}`} onClick={() => setExpanded(expanded === f.id ? null : f.id)}>
+                <div className="finding-card-header">
+                  <SeverityBadge severity={f.severity} />
+                  <span className="finding-card-title">{f.title}</span>
+                  {f.cves?.length > 0 && f.cves.slice(0, 2).map(cve => (
+                    <code key={cve} style={{ fontSize: "10px", background: "#1e2a40", padding: "1px 6px", borderRadius: "6px", color: "#f87171" }}>{cve}</code>
+                  ))}
+                  <span className="expand-icon">{expanded === f.id ? "▲" : "▼"}</span>
+                </div>
+                {expanded === f.id && (
+                  <div className="finding-card-body">
+                    <div className="finding-section"><div className="finding-section-label">Library</div>{f.library} v{f.version}</div>
+                    <div className="finding-section"><div className="finding-section-label">Description</div>{f.description}</div>
+                    <div className="finding-section"><div className="finding-section-label">Affected URL</div><code style={{ wordBreak: "break-all", fontSize: "11px" }}>{f.affected}</code></div>
+                    {f.cves?.length > 0 && <div className="finding-section"><div className="finding-section-label">CVE IDs</div>{f.cves.join(", ")}</div>}
+                    {f.remediation && <div className="finding-section remediation"><div className="finding-section-label">Remediation</div>{f.remediation}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        status === "complete" && (
+          <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+            <div style={{ fontSize: "2.5rem" }}>✅</div>
+            <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No Vulnerable JS Libraries Detected</div>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+              {libraryHits.length > 0 ? `${libraryHits.length} library version(s) identified — none had known vulnerabilities.` : "No identifiable JavaScript libraries found on page."}
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// ── API Discovery Tab ─────────────────────────────────────────────────────────
+function APIDiscoveryTab({ data, status }) {
+  const [activeSection, setActiveSection] = useState("overview");
+  const [expandedSpec, setExpandedSpec] = useState(null);
+  const [expandedGql, setExpandedGql] = useState(null);
+  const [epFilter, setEpFilter] = useState("");
+
+  if (!data || status === "pending") return (
+    <div className="empty-state">
+      <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🔗</div>
+      <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.4rem" }}>API Discovery Pending</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", maxWidth: 400, textAlign: "center" }}>
+        Will enumerate public APIs via Swagger/OpenAPI, GraphQL, REST path probing, JS parsing, robots.txt and more.
+      </div>
+    </div>
+  );
+
+  if (status === "running") return (
+    <div className="empty-state">
+      <span className="spinner" style={{ width: 36, height: 36, marginBottom: "1rem" }} />
+      <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>Discovering Public APIs...</div>
+      <div style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>
+        Probing 60+ paths · Parsing JS files · Checking GraphQL · Scanning Swagger specs
+      </div>
+    </div>
+  );
+
+  const {
+    openapi = [],
+    graphql = [],
+    rest = [],
+    wsdl = [],
+    wellKnown = [],
+    jsEndpoints = [],
+    robotsPaths = [],
+    formActions = [],
+    apiHeaders = [],
+    summary = {},
+  } = data;
+
+  const SECTIONS = [
+    { id: "overview", label: "📊 Overview", count: null },
+    { id: "openapi", label: "📄 OpenAPI/Swagger", count: openapi.length },
+    { id: "graphql", label: "⬡ GraphQL", count: graphql.length },
+    { id: "rest", label: "🌐 REST Endpoints", count: rest.length },
+    { id: "wsdl", label: "🔧 WSDL/SOAP", count: wsdl.length },
+    { id: "jsapis", label: "📜 JS Extracted", count: jsEndpoints.length },
+    { id: "other", label: "🗂 Other Sources", count: robotsPaths.length + formActions.length + apiHeaders.length },
+  ];
+
+  const STAT_CARDS = [
+    { label: "OpenAPI Specs", value: summary.openApiSpecs ?? 0, color: "#6366f1", icon: "📄" },
+    { label: "GraphQL Endpoints", value: summary.graphqlEndpoints ?? 0, color: "#ec4899", icon: "⬡" },
+    { label: "REST Endpoints", value: summary.restEndpoints ?? 0, color: "#0ea5e9", icon: "🌐" },
+    { label: "WSDL/SOAP", value: summary.wsdlEndpoints ?? 0, color: "#f59e0b", icon: "🔧" },
+    { label: "JS-Extracted APIs", value: summary.jsExtractedEndpoints ?? 0, color: "#22c55e", icon: "📜" },
+    { label: "Total Found", value: summary.total ?? 0, color: "#e11d48", icon: "🔗" },
+  ];
+
+  const filteredJs = epFilter
+    ? jsEndpoints.filter(e => e.toLowerCase().includes(epFilter.toLowerCase()))
+    : jsEndpoints;
+  const filteredRest = epFilter
+    ? rest.filter(r => r.path.toLowerCase().includes(epFilter.toLowerCase()))
+    : rest;
+
+  return (
+    <div className="tab-sections">
+      {/* Section nav pills */}
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+        {SECTIONS.map(s => (
+          <button key={s.id} onClick={() => setActiveSection(s.id)}
+            style={{
+              padding: "5px 14px", borderRadius: "20px", border: `1px solid ${activeSection === s.id ? "#3b82f6" : "#1e2a40"}`,
+              background: activeSection === s.id ? "#1a3050" : "transparent",
+              cursor: "pointer", fontSize: "12px", fontWeight: 500,
+              color: activeSection === s.id ? "#60a5fa" : "var(--text-muted)",
+              display: "flex", alignItems: "center", gap: "6px",
+            }}>
+            {s.label}
+            {s.count !== null && s.count > 0 && (
+              <span style={{ background: "#3b82f620", color: "#60a5fa", borderRadius: "10px", padding: "0 7px", fontSize: "11px" }}>{s.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── OVERVIEW ── */}
+      {activeSection === "overview" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+            {STAT_CARDS.map(s => (
+              <div key={s.label} className="card" style={{ padding: "18px", textAlign: "center", borderTop: `3px solid ${s.color}`, cursor: "pointer" }}
+                onClick={() => { const map = { "OpenAPI Specs": "openapi", "GraphQL Endpoints": "graphql", "REST Endpoints": "rest", "WSDL/SOAP": "wsdl", "JS-Extracted APIs": "jsapis" }; if (map[s.label]) setActiveSection(map[s.label]); }}>
+                <div style={{ fontSize: "1.6rem", marginBottom: "4px" }}>{s.icon}</div>
+                <div style={{ fontSize: "2rem", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {summary.total === 0 && jsEndpoints.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+              <div style={{ fontSize: "2.5rem" }}>✅</div>
+              <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No Public APIs Discovered</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>No Swagger specs, GraphQL, or REST API paths found via automated probing.</div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="card-header">🔗 Discovered API Sources</div>
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                {openapi.map(s => (
+                  <div key={s.url} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px", background: "#0d1a2d", borderRadius: "8px", borderLeft: "3px solid #6366f1" }}>
+                    <span style={{ fontSize: "1.3rem" }}>📄</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>{s.title}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>OpenAPI {s.specVersion} · v{s.version} · {s.endpointCount} endpoints</div>
+                    </div>
+                    <code style={{ fontSize: "11px", color: "#6366f1" }}>{s.path}</code>
+                  </div>
+                ))}
+                {graphql.map(g => (
+                  <div key={g.url} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px", background: "#0d1a2d", borderRadius: "8px", borderLeft: "3px solid #ec4899" }}>
+                    <span style={{ fontSize: "1.3rem" }}>⬡</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>GraphQL API</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{g.introspection ? `✅ Introspection enabled · ${g.typeCount} types` : "⚠ Introspection disabled"}</div>
+                    </div>
+                    <code style={{ fontSize: "11px", color: "#ec4899" }}>{g.path}</code>
+                  </div>
+                ))}
+                {rest.map(r => (
+                  <div key={r.url} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px", background: "#0d1a2d", borderRadius: "8px", borderLeft: "3px solid #0ea5e9" }}>
+                    <span style={{ fontSize: "1.3rem" }}>🌐</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>{r.path}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>HTTP {r.httpStatus}{r.requiresAuth ? " · 🔒 Auth required" : " · 🔓 Public"}</div>
+                    </div>
+                    <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "8px", background: r.requiresAuth ? "#d9780620" : "#0ea5e920", color: r.requiresAuth ? "#d97806" : "#0ea5e9" }}>{r.requiresAuth ? "Protected" : "Open"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── OPENAPI / SWAGGER ── */}
+      {activeSection === "openapi" && (
+        openapi.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+            <div style={{ fontSize: "2.5rem" }}>📄</div>
+            <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No OpenAPI / Swagger Specs Found</div>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>Probed {openapi.length === 0 ? "30+" : openapi.length} common spec paths.</div>
+          </div>
+        ) : openapi.map(spec => (
+          <div key={spec.url} className="card" style={{ border: "1px solid #6366f140" }}>
+            <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px", cursor: "pointer", borderBottom: expandedSpec === spec.url ? "1px solid #1e2a40" : "none" }}
+              onClick={() => setExpandedSpec(expandedSpec === spec.url ? null : spec.url)}>
+              <span style={{ fontSize: "1.5rem" }}>📄</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: "14px" }}>{spec.title}</div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  OpenAPI {spec.specVersion} · API version {spec.version} · <a href={spec.url} target="_blank" rel="noreferrer" style={{ color: "#6366f1" }}>{spec.path}</a>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <span style={{ padding: "3px 10px", borderRadius: "10px", background: "#6366f120", color: "#6366f1", fontSize: "12px", fontWeight: 600 }}>{spec.endpointCount} endpoints</span>
+                <span style={{ color: "var(--text-muted)", fontSize: "16px" }}>{expandedSpec === spec.url ? "▲" : "▼"}</span>
+              </div>
+            </div>
+            {expandedSpec === spec.url && spec.endpoints.length > 0 && (
+              <div style={{ padding: "12px 16px" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Documented Endpoints ({spec.endpoints.length})</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {spec.endpoints.map(ep => (
+                    <code key={ep} style={{ fontSize: "11px", background: "#131d30", padding: "3px 9px", borderRadius: "6px", color: "#a5b4fc", border: "1px solid #6366f130" }}>{ep}</code>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+
+      {/* ── GRAPHQL ── */}
+      {activeSection === "graphql" && (
+        graphql.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+            <div style={{ fontSize: "2.5rem" }}>⬡</div>
+            <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No GraphQL Endpoints Found</div>
+          </div>
+        ) : graphql.map(gql => (
+          <div key={gql.url} className="card" style={{ border: `1px solid ${gql.introspection ? "#ec489940" : "#1e2a40"}` }}>
+            <div style={{ padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: "12px", cursor: "pointer" }}
+              onClick={() => setExpandedGql(expandedGql === gql.url ? null : gql.url)}>
+              <span style={{ fontSize: "1.5rem", marginTop: "2px" }}>⬡</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>
+                  GraphQL API — <a href={gql.url} target="_blank" rel="noreferrer" style={{ color: "#ec4899" }}>{gql.path}</a>
+                </div>
+                {gql.introspection ? (
+                  <div style={{ padding: "8px 12px", background: "#e11d4810", borderRadius: "6px", fontSize: "12px", color: "#fca5a5", border: "1px solid #e11d4830" }}>
+                    ⚠️ <strong>Introspection is ENABLED</strong> — The full schema is publicly accessible. An attacker can enumerate all types, queries, and mutations.
+                  </div>
+                ) : (
+                  <div style={{ padding: "6px 12px", background: "#22c55e10", borderRadius: "6px", fontSize: "12px", color: "#86efac" }}>
+                    ✅ Introspection is disabled.
+                  </div>
+                )}
+                <div style={{ marginTop: "8px", display: "flex", gap: "10px", fontSize: "12px", color: "var(--text-muted)" }}>
+                  <span>Query type: <code style={{ color: "#a5b4fc" }}>{gql.queryType}</code></span>
+                  {gql.mutationType && <span>Mutation type: <code style={{ color: "#a5b4fc" }}>{gql.mutationType}</code></span>}
+                  <span>{gql.typeCount} types discovered</span>
+                </div>
+              </div>
+              <span style={{ color: "var(--text-muted)", fontSize: "16px" }}>{expandedGql === gql.url ? "▲" : "▼"}</span>
+            </div>
+            {expandedGql === gql.url && gql.types.length > 0 && (
+              <div style={{ padding: "12px 16px", borderTop: "1px solid #1e2a40" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Schema Types</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {gql.types.map(t => (
+                    <span key={t} style={{ fontSize: "11px", background: "#131d30", padding: "3px 9px", borderRadius: "6px", color: "#f9a8d4", border: "1px solid #ec489930" }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+
+      {/* ── REST ENDPOINTS ── */}
+      {activeSection === "rest" && (
+        <>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <input
+              style={{ flex: 1, padding: "7px 12px", background: "#0d1a2d", border: "1px solid #1e2a40", borderRadius: "8px", color: "#c8d0e0", fontSize: "13px" }}
+              placeholder="Filter endpoints..."
+              value={epFilter}
+              onChange={e => setEpFilter(e.target.value)}
+            />
+            <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{filteredRest.length} endpoint{filteredRest.length !== 1 ? "s" : ""}</span>
+          </div>
+          {filteredRest.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+              <div style={{ fontSize: "2.5rem" }}>🌐</div>
+              <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No REST Endpoints Found</div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="card-header">🌐 REST API Endpoints ({filteredRest.length})</div>
+              <table className="data-table">
+                <thead><tr><th>Path</th><th>HTTP Status</th><th>Access</th><th>Content-Type</th><th>Keys Detected</th></tr></thead>
+                <tbody>
+                  {filteredRest.map((r, i) => (
+                    <tr key={i}>
+                      <td><a href={r.url} target="_blank" rel="noreferrer" style={{ color: "#60a5fa", fontFamily: "monospace", fontSize: "12px" }}>{r.path}</a></td>
+                      <td><span style={{ padding: "2px 8px", borderRadius: "8px", fontSize: "11px", fontWeight: 600, background: r.httpStatus < 300 ? "#22c55e20" : "#d9780620", color: r.httpStatus < 300 ? "#22c55e" : "#d97806" }}>{r.httpStatus}</span></td>
+                      <td>
+                        <span style={{ padding: "2px 8px", borderRadius: "8px", fontSize: "11px", background: r.requiresAuth ? "#d9780615" : "#0ea5e915", color: r.requiresAuth ? "#d97806" : "#0ea5e9" }}>
+                          {r.requiresAuth ? "🔒 Auth" : "🔓 Open"}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: "11px", color: "var(--text-muted)" }}>{(r.contentType || "").split(";")[0]}</td>
+                      <td>
+                        {r.responseKeys?.length > 0 ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
+                            {r.responseKeys.slice(0, 4).map(k => <code key={k} style={{ fontSize: "10px", background: "#131d30", padding: "1px 6px", borderRadius: "4px", color: "#94a3b8" }}>{k}</code>)}
+                            {r.responseKeys.length > 4 && <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>+{r.responseKeys.length - 4}</span>}
+                          </div>
+                        ) : <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── WSDL / SOAP ── */}
+      {activeSection === "wsdl" && (
+        wsdl.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+            <div style={{ fontSize: "2.5rem" }}>🔧</div>
+            <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No WSDL / SOAP Endpoints Found</div>
+          </div>
+        ) : wsdl.map((w, i) => (
+          <div key={i} className="card" style={{ border: "1px solid #f59e0b40" }}>
+            <div style={{ padding: "14px 16px", display: "flex", gap: "12px" }}>
+              <span style={{ fontSize: "1.5rem" }}>🔧</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>SOAP/WSDL Service</div>
+                <a href={w.url} target="_blank" rel="noreferrer" style={{ color: "#f59e0b", fontSize: "12px" }}>{w.url}</a>
+                {w.services.length > 0 && (
+                  <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {w.services.map(s => <span key={s} style={{ fontSize: "11px", background: "#f59e0b20", color: "#fbbf24", padding: "2px 8px", borderRadius: "8px" }}>{s}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+
+      {/* ── JS EXTRACTED ENDPOINTS ── */}
+      {activeSection === "jsapis" && (
+        <>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <input
+              style={{ flex: 1, padding: "7px 12px", background: "#0d1a2d", border: "1px solid #1e2a40", borderRadius: "8px", color: "#c8d0e0", fontSize: "13px" }}
+              placeholder="Filter extracted endpoints..."
+              value={epFilter}
+              onChange={e => setEpFilter(e.target.value)}
+            />
+            <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{filteredJs.length} endpoint{filteredJs.length !== 1 ? "s" : ""}</span>
+          </div>
+          {filteredJs.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+              <div style={{ fontSize: "2.5rem" }}>📜</div>
+              <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No Endpoints Extracted from JavaScript</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>No API URLs found in fetch(), axios(), or XHR calls in page scripts.</div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="card-header" style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>📜 Endpoints Extracted from JavaScript ({filteredJs.length})</span>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 400 }}>Extracted from fetch/axios/XHR calls</span>
+              </div>
+              <div style={{ padding: "12px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {filteredJs.map((ep, i) => (
+                  <code key={i} style={{ fontSize: "11px", background: "#0d1a2d", border: "1px solid #22c55e30", color: "#86efac", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", wordBreak: "break-all" }}
+                    onClick={() => { try { const url = ep.startsWith("/") ? `https://${data.domain}${ep}` : ep; window.open(url, "_blank"); } catch (_) { } }}>
+                    {ep}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── OTHER SOURCES (robots.txt, forms, headers) ── */}
+      {activeSection === "other" && (
+        <>
+          {robotsPaths.length > 0 && (
+            <div className="card">
+              <div className="card-header">🤖 API Paths from robots.txt / sitemap</div>
+              <table className="data-table">
+                <thead><tr><th>Source</th><th>Path</th></tr></thead>
+                <tbody>
+                  {robotsPaths.map((r, i) => (
+                    <tr key={i}>
+                      <td><span style={{ fontSize: "11px", background: "#1e2a40", padding: "2px 8px", borderRadius: "6px" }}>{r.source}</span></td>
+                      <td><code style={{ fontSize: "12px", color: "#60a5fa" }}>{r.path}</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {formActions.length > 0 && (
+            <div className="card">
+              <div className="card-header">📝 Form Action URLs</div>
+              <div style={{ padding: "12px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {formActions.map((fa, i) => <code key={i} style={{ fontSize: "11px", background: "#0d1a2d", border: "1px solid #1e2a40", color: "#94a3b8", padding: "4px 10px", borderRadius: "6px" }}>{fa}</code>)}
+              </div>
+            </div>
+          )}
+
+          {apiHeaders.length > 0 && (
+            <div className="card">
+              <div className="card-header">📡 API-Related Response Headers</div>
+              <table className="data-table">
+                <thead><tr><th>Header</th><th>Value</th></tr></thead>
+                <tbody>
+                  {apiHeaders.map((h, i) => (
+                    <tr key={i}>
+                      <td><code style={{ fontSize: "11px", color: "#60a5fa" }}>{h.header}</code></td>
+                      <td style={{ fontSize: "12px", color: "var(--text-muted)", wordBreak: "break-all" }}>{h.value || h.url || h.rel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {robotsPaths.length === 0 && formActions.length === 0 && apiHeaders.length === 0 && (
+            <div className="card" style={{ textAlign: "center", padding: "2.5rem" }}>
+              <div style={{ fontSize: "2.5rem" }}>🗂</div>
+              <div style={{ fontWeight: 600, marginTop: "0.5rem" }}>No Additional API Signals Found</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>robots.txt, sitemaps, form actions, and response headers yielded no API clues.</div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

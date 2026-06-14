@@ -91,8 +91,8 @@ echo ""
 echo "  ─────────────────────────────────────────────"
 echo "  [+] Starting ReconScan..."
 echo ""
-echo "      Backend:  http://0.0.0.0:3001"
-echo "      Frontend: http://0.0.0.0:3000"
+echo "      Backend:  http://localhost:3001"
+echo "      Frontend: http://localhost:3000"
 echo ""
 
 # Start backend
