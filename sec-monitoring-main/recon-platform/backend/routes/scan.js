@@ -17,6 +17,7 @@ const { runWAFDetector }       = require('../modules/wafDetector');
 const { runCVEEnrichment }     = require('../modules/cveEnrichment');
 const { runRetireJsChecker }   = require('../modules/retireJsChecker');
 const { runAPIDiscovery }      = require('../modules/apiDiscovery');
+const { runNessusScanner }     = require('../modules/nessusScanner');
 const { calculateRiskScore }   = require('../utils/riskScoring');
 
 module.exports = (scans, broadcast, alertEngine = null) => {
@@ -24,7 +25,8 @@ module.exports = (scans, broadcast, alertEngine = null) => {
 
   // Start a new scan
   router.post('/start', async (req, res) => {
-    const { domain, modules = ['all'] } = req.body;
+    const { domain, modules = ['all'], scanMode = 'full' } = req.body;
+    const resolvedMode = scanMode === 'single' ? 'single' : 'full';
 
     if (!domain) {
       return res.status(400).json({ error: 'Domain is required' });
@@ -75,14 +77,16 @@ module.exports = (scans, broadcast, alertEngine = null) => {
         cveEnrichment:      { status: 'pending', data: null },
         retireJsChecker:    { status: 'pending', data: null },
         apiDiscovery:       { status: 'pending', data: null },
+        nessusScanner:      { status: 'pending', data: null },
       },
       findings: [],
       riskScore: null,
       summary: null,
+      scanMode: resolvedMode,
     };
 
     scans.set(scanId, scan);
-    res.json({ scanId, status: 'started' });
+    res.json({ scanId, status: 'started', scanMode: resolvedMode });
 
     // Run modules asynchronously
     runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine);
@@ -187,8 +191,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       label: 'SSL/TLS Certificate Scan',
       weight: 10,
       runner: (domain, onProgress) => {
-        // Pull subdomains discovered by the assetDiscovery module at runtime
-        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        // In single mode: only scan the primary domain, no subdomains
+        const subdomains = scan.scanMode === 'single'
+          ? []
+          : (scan.modules.assetDiscovery?.data?.subdomains || []);
         return runSSLScan(domain, onProgress, subdomains);
       },
     },
@@ -210,7 +216,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       label: 'Subdomain Takeover Check',
       weight: 9,
       runner: (domain, onProgress) => {
-        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        // In single mode: skip subdomain takeover checks (no subdomains to test)
+        const subdomains = scan.scanMode === 'single'
+          ? []
+          : (scan.modules.assetDiscovery?.data?.subdomains || []);
         return runSubdomainTakeover(domain, onProgress, subdomains);
       },
     },
@@ -249,6 +258,13 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       weight: 9,
       runner: runAPIDiscovery,
     },
+    {
+      // Nessus-Style Vulnerability Scanner: agentless plugin-based checks
+      key: 'nessusScanner',
+      label: 'Nessus-Style Vulnerability Scan',
+      weight: 12,
+      runner: runNessusScanner,
+    },
   ];
 
   // Global scan timeout — ensures scan ALWAYS finishes
@@ -283,7 +299,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
         ]);
 
         if (multiTargetModules.has(mod.key)) {
-          const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+          // In 'single' mode: only scan the primary domain — no subdomain expansion
+          const subdomains = scan.scanMode === 'single'
+            ? []
+            : (scan.modules.assetDiscovery?.data?.subdomains || []);
           const targets = [...new Set([domain, ...subdomains])];
           
           const tasks = targets.map(target => async () => {
@@ -466,5 +485,9 @@ function buildSummary(scan) {
     sslExpired:           ssl?.summary?.expired || 0,
     sslExpiring:          ssl?.summary?.expiring || 0,
     sslValid:             ssl?.summary?.valid || 0,
+    // Nessus
+    nessusPlugins:        modules.nessusScanner?.data?.summary?.totalPlugins || 0,
+    nessusCritical:       modules.nessusScanner?.data?.summary?.critical || 0,
+    nessusHigh:           modules.nessusScanner?.data?.summary?.high || 0,
   };
 }

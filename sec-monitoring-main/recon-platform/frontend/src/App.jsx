@@ -298,6 +298,7 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
   const [domain, setDomain] = useState("");
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
+  const [scanMode, setScanMode] = useState("full");
 
   const handleScan = async () => {
     // Strip protocol, port, path, query string, fragment — accept any URL form
@@ -312,11 +313,11 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
     try {
       const res = await fetch(`${API_BASE}/scan/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: d }),
+        body: JSON.stringify({ domain: d, scanMode }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Failed to start scan"); return; }
-      onStartScan({ ...data, id: data.scanId, domain: d, status: "running", progress: 0 });
+      onStartScan({ ...data, id: data.scanId, domain: d, status: "running", progress: 0, scanMode: data.scanMode || scanMode });
       setDomain("");
     } catch (e) {
       setError("Could not connect to API. Is the backend running?");
@@ -339,6 +340,34 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
       {/* New Scan Box */}
       <div className="scan-box">
         <div className="scan-box-inner">
+
+          {/* Scan Mode Toggle */}
+          <div className="scan-mode-row">
+            <div className="scan-mode-label">Scan Mode</div>
+            <div className="scan-mode-toggle">
+              <button
+                id="scan-mode-full"
+                className={`scan-mode-btn ${scanMode === "full" ? "active" : ""}`}
+                onClick={() => setScanMode("full")}
+                disabled={scanning}
+              >
+                <span className="scan-mode-icon">🌐</span>
+                <span className="scan-mode-name">Full Scan</span>
+                <span className="scan-mode-desc">Domain + all subdomains</span>
+              </button>
+              <button
+                id="scan-mode-single"
+                className={`scan-mode-btn ${scanMode === "single" ? "active single" : ""}`}
+                onClick={() => setScanMode("single")}
+                disabled={scanning}
+              >
+                <span className="scan-mode-icon">🎯</span>
+                <span className="scan-mode-name">Single Domain</span>
+                <span className="scan-mode-desc">Primary domain only</span>
+              </button>
+            </div>
+          </div>
+
           <label className="scan-label">Target Domain</label>
           <div className="scan-input-row">
             <input
@@ -352,12 +381,14 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
             />
             <button className="scan-btn" onClick={handleScan} disabled={scanning || !domain.trim()}>
               {scanning ? <span className="spinner" /> : null}
-              {scanning ? "Starting..." : "Start Scan"}
+              {scanning ? "Starting..." : scanMode === "full" ? "Full Scan" : "Single Scan"}
             </button>
           </div>
           {error && <div className="scan-error">{error}</div>}
           <div className="scan-hint">
-            Modules: 🌐 WHOIS &amp; IP · Asset Discovery (subdomains) · 🔒 SSL/TLS (all subdomains) · DNS &amp; Email · Port Scan · Service Fingerprint · Web Tech · Vuln Assessment · ⚔ Active Web Attacks (XSS / SQLi / CMDi / LFI)
+            {scanMode === "full"
+              ? "🌐 Full Scan: discovers all subdomains then runs every module against each. Thorough but slower."
+              : "🎯 Single Domain: scans only the target domain — no subdomain discovery or expansion. Fast and focused."}
           </div>
         </div>
       </div>
@@ -443,6 +474,7 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
             <thead>
               <tr>
                 <th>Domain</th>
+                <th>Mode</th>
                 <th>Status</th>
                 <th>Risk</th>
                 <th>Findings</th>
@@ -454,6 +486,11 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
               {scans.slice(0, 10).map(s => (
                 <tr key={s.id} className="table-row" onClick={() => onSelectScan(s.id)}>
                   <td className="domain-cell">{s.domain}</td>
+                  <td>
+                    <span className={`scan-mode-pill ${s.scanMode === "single" ? "single" : "full"}`}>
+                      {s.scanMode === "single" ? "🎯 Single" : "🌐 Full"}
+                    </span>
+                  </td>
                   <td>
                     <span className={`status-pill ${s.status}`}>
                       <StatusDot status={s.status} />
@@ -518,6 +555,13 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
   const apiBadge = apiData?.summary?.total > 0 ? ` 🔗${apiData.summary.total}` :
     apiData?.jsEndpoints?.length > 0 ? ` 🔗${apiData.jsEndpoints.length}` : "";
 
+  const nessusData = scan.modules?.nessusScanner?.data;
+  const nessusBadge = nessusData?.summary?.critical > 0
+    ? ` 🔴${nessusData.summary.critical}C`
+    : nessusData?.summary?.totalPlugins > 0
+      ? ` (${nessusData.summary.totalPlugins})`
+      : "";
+
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "whois", label: "🌐 WHOIS & IP" },
@@ -538,6 +582,7 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
     { id: "webattacks", label: `⚔ Web Attacks ${scan.modules?.wapitiscan?.data?.findings?.length ? `(${scan.modules.wapitiscan.data.findings.length})` : ""}` },
     { id: "cms", label: `🏛 CMS ${scan.modules?.cmsVulnScan?.data?.findings?.length ? `(${scan.modules.cmsVulnScan.data.findings.length})` : ""}` },
     { id: "findings", label: `Findings ${scan.findings?.length ? `(${scan.findings.length})` : ""}` },
+    { id: "nessus", label: `🔬 Nessus${nessusBadge}` },
     { id: "log", label: "Live Log" },
   ];
 
@@ -555,6 +600,9 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
                   <div className="progress-fill" style={{ width: `${scan.progress}%` }} />
                 </div>
               )}
+              <span className={`scan-mode-pill ${scan.scanMode === "single" ? "single" : "full"}`} style={{ fontSize: 11 }}>
+                {scan.scanMode === "single" ? "🎯 Single Domain" : "🌐 Full Scan"}
+              </span>
               <span className="scan-time">{new Date(scan.startedAt).toLocaleString()}</span>
             </div>
           </div>
@@ -606,6 +654,7 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
         {activeTab === "webattacks" && <WebAttacksTab data={scan.modules?.wapitiscan?.data} status={scan.modules?.wapitiscan?.status} />}
         {activeTab === "cms" && <CMSScanTab data={scan.modules?.cmsVulnScan?.data} status={scan.modules?.cmsVulnScan?.status} />}
         {activeTab === "findings" && <FindingsTab findings={scan.findings} />}
+        {activeTab === "nessus" && <NessusScannerTab data={scan.modules?.nessusScanner?.data} status={scan.modules?.nessusScanner?.status} />}
         {activeTab === "log" && <LiveLogTab logs={scanLog} />}
       </div>
     </div>
@@ -632,6 +681,7 @@ function ModulePipeline({ modules }) {
     { key: "subdomainTakeover", label: "Takeover" },
     { key: "wapitiscan", label: "Web Attacks" },
     { key: "cmsVulnScan", label: "CMS Scan" },
+    { key: "nessusScanner", label: "Nessus Scan" },
   ];
   return (
     <div className="module-pipeline">
@@ -710,6 +760,11 @@ function OverviewTab({ scan }) {
             <SummaryItem label="SSL Expiring" value={summary.sslExpiring || 0} accent={summary.sslExpiring > 0} />
             <SummaryItem label="Active Probes" value={summary.activeProbes || 0} />
             <SummaryItem label="Attack Findings" value={summary.activeAttackFindings || 0} accent={summary.activeAttackFindings > 0} />
+            {(summary.nessusPlugins > 0 || summary.nessusCritical > 0) && <>
+              <SummaryItem label="Nessus Plugins" value={summary.nessusPlugins || 0} />
+              <SummaryItem label="Nessus Critical" value={summary.nessusCritical || 0} accent={summary.nessusCritical > 0} />
+            </>}
+
           </div>
         </div>
       )}
@@ -3173,6 +3228,209 @@ function AlertSettingsView() {
             <button className="scan-btn" onClick={saveConfig}>{saved ? "✅ Saved!" : "💾 Save Config"}</button>
             <button className="scan-btn" style={{ background: "#1e2a40" }} onClick={sendTest}>🧪 Send Test Alert</button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Nessus Scanner Tab ────────────────────────────────────────────────────────
+function NessusScannerTab({ data, status }) {
+  const [expandedPlugin, setExpandedPlugin] = useState(null);
+  const [filterFamily, setFilterFamily] = useState("all");
+  const [filterSev, setFilterSev] = useState("all");
+  const [searchQ, setSearchQ] = useState("");
+
+  if (!data && status === "running") {
+    return (
+      <div className="nessus-loading">
+        <div className="nessus-loading-icon">🔬</div>
+        <div className="nessus-loading-title">Nessus-Style Scan Running</div>
+        <div className="nessus-loading-sub">Executing vulnerability plugin checks — this may take 1–2 minutes...</div>
+        <div style={{ marginTop: 16 }}><span className="spinner" /></div>
+      </div>
+    );
+  }
+  if (!data) return <div className="empty-state">🔬 Nessus-style scan pending or no data available.</div>;
+
+  const plugins = data.pluginResults || [];
+  const findings = data.findings || [];
+  const summary = data.summary || {};
+  const families = [...new Set(plugins.map(p => p.family))].sort();
+
+  const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  const sevColor = { critical: "#e11d48", high: "#ea580c", medium: "#d97706", low: "#16a34a", info: "#0284c7" };
+  const sevBg    = { critical: "#fff1f250", high: "#fff7ed50", medium: "#fffbeb50", low: "#f0fdf450", info: "#f0f9ff50" };
+
+  const filtered = plugins
+    .filter(p => filterFamily === "all" || p.family === filterFamily)
+    .filter(p => filterSev === "all" || p.severity === filterSev)
+    .filter(p => !searchQ || p.name.toLowerCase().includes(searchQ.toLowerCase()) || (p.description || "").toLowerCase().includes(searchQ.toLowerCase()))
+    .sort((a, b) => (severityOrder[a.severity] ?? 5) - (severityOrder[b.severity] ?? 5));
+
+  const statBlocks = [
+    { label: "Total Plugins", value: summary.totalPlugins || 0, color: "#60a5fa" },
+    { label: "Critical", value: summary.critical || 0, color: "#e11d48" },
+    { label: "High", value: summary.high || 0, color: "#ea580c" },
+    { label: "Medium", value: summary.medium || 0, color: "#d97706" },
+    { label: "Low", value: summary.low || 0, color: "#16a34a" },
+    { label: "Info", value: summary.info || 0, color: "#0284c7" },
+  ];
+
+  return (
+    <div className="tab-sections">
+      {/* Header Banner */}
+      <div className="nessus-banner">
+        <div className="nessus-banner-left">
+          <span className="nessus-banner-icon">🔬</span>
+          <div>
+            <div className="nessus-banner-title">Nessus-Style Vulnerability Assessment</div>
+            <div className="nessus-banner-sub">{data.scanEngine} · Policy: {data.policyName}</div>
+            {data.targetIP && <div className="nessus-banner-sub">Target IP: <code style={{ color: "#60a5fa" }}>{data.targetIP}</code></div>}
+          </div>
+        </div>
+        <div className="nessus-banner-stats">
+          {statBlocks.map(s => (
+            <div key={s.label} className="nessus-stat">
+              <div className="nessus-stat-val" style={{ color: s.color }}>{s.value}</div>
+              <div className="nessus-stat-lbl">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Plugin Family Breakdown */}
+      {Object.keys(summary.pluginFamilies || {}).length > 0 && (
+        <div className="card">
+          <div className="card-header">📊 Plugin Family Distribution</div>
+          <div className="nessus-family-grid">
+            {Object.entries(summary.pluginFamilies || {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([fam, count]) => (
+                <div key={fam} className={`nessus-family-chip ${filterFamily === fam ? "active" : ""}`}
+                  onClick={() => setFilterFamily(filterFamily === fam ? "all" : fam)}>
+                  <span className="nessus-family-name">{fam}</span>
+                  <span className="nessus-family-count">{count}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          className="scan-input"
+          style={{ flex: 1, minWidth: 200, padding: "8px 14px", fontSize: 13 }}
+          placeholder="Search plugins..."
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+        />
+        {["all", "critical", "high", "medium", "low", "info"].map(s => (
+          <button key={s} className={`filter-btn ${filterSev === s ? `active ${s}` : ""}`}
+            onClick={() => setFilterSev(s)}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+        {filterFamily !== "all" && (
+          <button className="filter-btn active" style={{ background: "rgba(99,102,241,0.1)", borderColor: "#6366f1", color: "#818cf8" }}
+            onClick={() => setFilterFamily("all")}>
+            ✕ {filterFamily}
+          </button>
+        )}
+        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{filtered.length} plugin{filtered.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {/* Plugin Results List */}
+      {filtered.length === 0 ? (
+        <div className="empty-state">No plugins match your filters.</div>
+      ) : (
+        <div className="findings-list">
+          {filtered.map((p, i) => {
+            const isOpen = expandedPlugin === (p.pluginId + i);
+            return (
+              <div key={p.pluginId + i} className={`finding-card ${p.severity}`}
+                onClick={() => setExpandedPlugin(isOpen ? null : (p.pluginId + i))}>
+                <div className="finding-card-header">
+                  <SeverityBadge severity={p.severity} />
+                  <div className="finding-card-title">{p.name}</div>
+                  <div className="nessus-plugin-meta">
+                    <span className="nessus-plugin-id">Plugin #{p.pluginId}</span>
+                    <span className="nessus-family-tag">{p.family}</span>
+                    {p.cvssScore > 0 && (
+                      <span className="nessus-cvss" style={{ background: p.cvssScore >= 9 ? "rgba(225,29,72,0.15)" : p.cvssScore >= 7 ? "rgba(234,88,12,0.15)" : "rgba(217,119,6,0.15)", color: p.cvssScore >= 9 ? "#f43f5e" : p.cvssScore >= 7 ? "#fb923c" : "#fbbf24" }}>
+                        CVSS {p.cvssScore.toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                  <span className="expand-icon">{isOpen ? "▲" : "▼"}</span>
+                </div>
+                {/* Affected host preview */}
+                {p.affected && (
+                  <div style={{ padding: "0 20px 10px", fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                    🎯 {p.affected}
+                  </div>
+                )}
+                {isOpen && (
+                  <div className="finding-card-body" onClick={e => e.stopPropagation()}>
+                    {/* CVEs */}
+                    {p.cves && p.cves.length > 0 && (
+                      <div className="finding-section">
+                        <div className="finding-section-label">CVE References</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {p.cves.map(cve => (
+                            <a key={cve} href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noreferrer"
+                              style={{ fontSize: 12, padding: "3px 10px", borderRadius: 20, background: "rgba(225,29,72,0.12)", color: "#f87171", border: "1px solid rgba(225,29,72,0.25)", fontWeight: 600, textDecoration: "none" }}
+                              onClick={e => e.stopPropagation()}>
+                              🔗 {cve}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Description */}
+                    <div className="finding-section">
+                      <div className="finding-section-label">Description</div>
+                      {p.description}
+                    </div>
+                    {/* Detail */}
+                    {p.detail && (
+                      <div className="finding-section">
+                        <div className="finding-section-label">Technical Detail</div>
+                        <code style={{ wordBreak: "break-all", display: "block", background: "rgba(0,0,0,0.3)", padding: "8px 12px", borderRadius: 6, fontSize: 12 }}>{p.detail}</code>
+                      </div>
+                    )}
+                    {/* Remediation */}
+                    <div className="finding-section remediation">
+                      <div className="finding-section-label" style={{ color: "inherit" }}>✅ Remediation</div>
+                      {p.remediation}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Raw scan metadata */}
+      <div className="card" style={{ marginTop: 8 }}>
+        <div className="card-header">ℹ Scan Metadata</div>
+        <div style={{ padding: "16px 20px", fontSize: 13, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+          {[
+            ["Engine", data.scanEngine],
+            ["Policy", data.policyName],
+            ["Target", data.domain],
+            ["Target IP", data.targetIP || "Not resolved"],
+            ["Scanned At", data.checkedAt ? new Date(data.checkedAt).toLocaleString() : "—"],
+            ["Total Plugins Fired", summary.totalPlugins || 0],
+            ["Findings Generated", (data.findings || []).length],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em" }}>{k}</div>
+              <div style={{ fontFamily: "monospace", color: "#e2e8f0", fontSize: 12 }}>{String(v)}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

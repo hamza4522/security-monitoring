@@ -45447,5 +45447,143 @@
       "sslExpiring": 0,
       "sslValid": 2
     }
+  },
+  {
+    "id": "d9e87393-0d7d-4003-a842-694715b71465",
+    "domain": "worknigeria.com",
+    "status": "running",
+    "progress": 9,
+    "startedAt": "2026-06-15T18:25:16.611Z",
+    "completedAt": null,
+    "modules": {
+      "whoisLookup": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "registrar": null,
+          "registrantOrg": null,
+          "registrationDate": null,
+          "expirationDate": null,
+          "updatedDate": null,
+          "daysUntilExpiry": null,
+          "nameservers": [],
+          "domainStatus": [],
+          "ipGeo": [
+            {
+              "ip": "13.35.238.69",
+              "country": "Singapore",
+              "countryCode": "SG",
+              "region": "North West",
+              "city": "Singapore",
+              "isp": "Amazon.com, Inc.",
+              "org": "AWS CloudFront (GLOBAL)",
+              "asn": "AS16509 Amazon.com, Inc.",
+              "isHosting": true,
+              "isProxy": false,
+              "isMobile": false
+            },
+            {
+              "ip": "13.35.238.94",
+              "country": "Singapore",
+              "countryCode": "SG",
+              "region": "North West",
+              "city": "Singapore",
+              "isp": "Amazon.com, Inc.",
+              "org": "AWS CloudFront (GLOBAL)",
+              "asn": "AS16509 Amazon.com, Inc.",
+              "isHosting": true,
+              "isProxy": false,
+              "isMobile": false
+            },
+            {
+              "ip": "13.35.238.124",
+              "country": "Singapore",
+              "countryCode": "SG",
+              "region": "North West",
+              "city": "Singapore",
+              "isp": "Amazon.com, Inc.",
+              "org": "AWS CloudFront (GLOBAL)",
+              "asn": "AS16509 Amazon.com, Inc.",
+              "isHosting": true,
+              "isProxy": false,
+              "isMobile": false
+            }
+          ],
+          "findings": []
+        }
+      },
+      "assetDiscovery": {
+        "status": "running",
+        "data": null
+      },
+      "sslScan": {
+        "status": "pending",
+        "data": null
+      },
+      "dnsAssessment": {
+        "status": "pending",
+        "data": null
+      },
+      "portScan": {
+        "status": "pending",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "pending",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "pending",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "pending",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "pending",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "pending",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "pending",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "pending",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "pending",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "pending",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "pending",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "pending",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "pending",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "pending",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": null,
+    "summary": null,
+    "scanMode": "single"
   }
 ]

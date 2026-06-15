@@ -1,78 +1,146 @@
-# ReconScan — Agentless Security Assessment Platform
+# 🛡️ ReconScan — Agentless Security Assessment Platform
 
-A modular, full-stack external security reconnaissance platform. No agents or software installed on the target. Built with React + Node.js. Uses ProjectDiscovery CLI tools (subfinder, httpx, dnsx) + nmap.
+A modular, full-stack external security reconnaissance and vulnerability assessment platform.  
+**No agents. No Nessus license. No API keys required.**
+
+Built with **React + Node.js** · Styled with a **Datadog-inspired dark theme** · Real-time via **WebSockets**
 
 ---
 
-## Architecture
+## ✨ Features
+
+| Capability | Description |
+|---|---|
+| 🌐 **Asset Discovery** | Subdomain enum, live host probing, CDN/WAF detection |
+| 🔒 **SSL/TLS Scan** | Certificate validity, expiry, weak ciphers, HSTS analysis |
+| 🗂️ **DNS Assessment** | SPF, DMARC, DKIM, DNSSEC, AXFR zone transfer test |
+| 🔭 **Port Scanning** | Top ports via TCP sockets + nmap fallback |
+| 🧬 **Service Fingerprint** | Banner grabbing, version detection, security header audit |
+| 🧠 **Web Tech Fingerprint** | Wappalyzer-style: CMS, frameworks, CDN, libraries |
+| 🛡️ **WAF / CDN Detection** | Cloudflare, Akamai, Imperva, Fastly, and 20+ more |
+| ⚔️ **Active Web Attacks** | XSS, SQLi, CMDi, LFI/RFI — real probes via Wapiti-style engine |
+| 🔬 **Nessus-Style Scanner** | 50+ agentless plugin checks across 11 families, CVSS scores, CVE links |
+| 🏛️ **CMS Vulnerability Scan** | WordPress, Drupal, Joomla, Magento plugin/version CVEs |
+| 🔗 **Public API Discovery** | OpenAPI, GraphQL, REST, WSDL, JS-extracted endpoints |
+| 📜 **JS Secret Scanner** | AWS keys, JWTs, private keys, API tokens in page scripts |
+| 🔁 **Subdomain Takeover** | Detects dangling CNAME records across 30+ cloud services |
+| 💊 **Retire.js Checker** | Vulnerable JavaScript libraries via Retire.js database |
+| 📡 **NVD CVE Enrichment** | Version-aware CVE lookup against NIST NVD API |
+| 🎯 **Scan Mode Toggle** | **Full Scan** (all subdomains) or **Single Domain** (fast, focused) |
+
+---
+
+## 🏗️ Architecture
 
 ```
 recon-platform/
 ├── backend/
-│   ├── server.js              # Express + WebSocket API
+│   ├── server.js                   # Express + WebSocket server
 │   ├── routes/
-│   │   ├── scan.js            # Scan orchestration & pipeline
-│   │   └── report.js          # Report generation endpoints
+│   │   ├── scan.js                 # Scan orchestration pipeline
+│   │   └── report.js               # PDF/MD/JSON report generation
 │   ├── modules/
-│   │   ├── assetDiscovery.js  # Module 1: Subdomain enum, live hosts, CDN/WAF
-│   │   ├── dnsAssessment.js   # Module 2: SPF, DMARC, DKIM, DNSSEC, zone xfer
-│   │   ├── portScan.js        # Module 3: nmap / TCP socket port scanning
-│   │   ├── serviceFingerprint.js  # Module 4: Banner grabbing, version detection
-│   │   └── webTechFingerprint.js  # Module 5: Wappalyzer-style tech detection
+│   │   ├── assetDiscovery.js       # Subdomain enum, live hosts, CDN
+│   │   ├── sslScan.js              # TLS certificate & cipher checks
+│   │   ├── dnsAssessment.js        # SPF, DMARC, DKIM, AXFR
+│   │   ├── portScan.js             # TCP port scanning
+│   │   ├── serviceFingerprint.js   # Banner grab, header audit
+│   │   ├── webTechFingerprint.js   # Wappalyzer-style detection
+│   │   ├── wafDetector.js          # WAF/CDN fingerprinting
+│   │   ├── vulnAssessment.js       # Core vulnerability checks
+│   │   ├── nucleiChecks.js         # Nuclei-style template checks
+│   │   ├── jsSecretScanner.js      # Secrets in JavaScript files
+│   │   ├── subdomainTakeover.js    # Dangling CNAME detection
+│   │   ├── wapitiscan.js           # Active web attack probing
+│   │   ├── cmsVulnScan.js          # CMS-specific CVE checks
+│   │   ├── cveEnrichment.js        # NVD CVE enrichment
+│   │   ├── retireJsChecker.js      # Retire.js vulnerable libs
+│   │   ├── apiDiscovery.js         # Public API enumeration
+│   │   └── nessusScanner.js        # Agentless Nessus-style scanner
 │   └── utils/
-│       ├── exec.js            # CLI tool executor with timeout
-│       └── riskScoring.js     # Risk score & grade calculator
+│       ├── exec.js                 # CLI tool runner with timeout
+│       ├── riskScoring.js          # 0–100 risk score + grade
+│       └── alertEngine.js          # Webhook/Slack/Discord alerts
 └── frontend/
     └── src/
-        ├── App.jsx            # Full React UI — all tabs and views
-        ├── App.css            # Layout, animations, and component styles
-        └── theme.css          # Centralized color variables for easy theming
+        ├── App.jsx                 # Full React UI — all tabs & views
+        ├── App.css                 # Layout, animations, components
+        └── theme.css               # Datadog-style color variables
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### Option A: Direct (dev mode)
+### Option A: Direct (Dev Mode)
 
 ```bash
-chmod +x setup.sh
-./setup.sh
+cd recon-platform
+chmod +x setup.sh && ./setup.sh
 ```
 
-### Option B: Docker
+### Option B: Manual
 
 ```bash
-./setup.sh docker
-# or
+# Terminal 1 — Backend (port 3001)
+cd recon-platform/backend
+npm install
+node server.js
+
+# Terminal 2 — Frontend (port 3000)
+cd recon-platform/frontend
+npm install
+npm start
+```
+
+Open **http://localhost:3000**
+
+### Option C: Docker
+
+```bash
+cd recon-platform
 docker-compose up --build
 ```
 
-### Option C: Manual
+---
 
-```bash
-# Backend
-cd backend && npm install && node server.js
+## 🔬 Nessus-Style Scanner (No License Required)
 
-# Frontend (new terminal)
-cd frontend && npm install && npm start
-```
+The built-in `nessusScanner` module performs **50+ vulnerability checks** across **11 plugin families** — entirely agentless, no Nessus install or API key needed:
 
-Open http://localhost:3000
+| Plugin Family | Checks |
+|---|---|
+| **Web Servers** | Server version CVEs (Apache, Nginx, IIS), TRACE/PUT methods |
+| **TLS/SSL** | TLSv1.0, expired/self-signed certs, HSTS strength, weak keys |
+| **Authentication** | HTTP Basic over HTTP, anonymous FTP, admin panel exposure, default creds |
+| **Information Disclosure** | `.git`, `.env`, phpinfo, Actuator, heap dumps, SQL backups |
+| **Injection** | SQL error reflection, reflected XSS, path traversal |
+| **Network Services** | SMB, RDP, VNC, Redis, Elasticsearch, MongoDB, Docker API, WebLogic |
+| **CGI** | Shellshock (CVE-2014-6271), Heartbleed cert date hint |
+| **Security Policy** | CSP, X-Frame-Options, XCTO, Referrer-Policy, Permissions-Policy |
+| **CORS & Cookies** | Wildcard CORS, origin reflection, Secure/HttpOnly/SameSite flags |
+| **DNS** | Zone transfer (AXFR), SPF, DMARC |
+| **FTP** | Open FTP service, anonymous login |
 
 ---
 
-## Security Tools
+## 🎯 Scan Modes
 
-The platform works in two modes:
+| Mode | What Gets Scanned | Speed |
+|---|---|---|
+| 🌐 **Full Scan** | Primary domain + all discovered subdomains | ~2–8 min |
+| 🎯 **Single Domain** | Primary domain only — no subdomain expansion | ~45–90 sec |
 
-### Full Mode (with tools installed)
-| Tool | Source | Used For |
-|------|--------|----------|
+---
+
+## 🛠️ Security Tools (Optional — Fallback Works Without Them)
+
+| Tool | Source | Purpose |
+|---|---|---|
 | `subfinder` | ProjectDiscovery | Subdomain enumeration |
-| `httpx` | ProjectDiscovery | Live host probing, CDN/WAF detection |
+| `httpx` | ProjectDiscovery | Live host probing |
 | `dnsx` | ProjectDiscovery | Bulk DNS resolution |
-| `nmap` | Nmap.org | Port scanning + service version detection |
+| `nmap` | Nmap.org | Port scanning + service detection |
 
 Install Go tools:
 ```bash
@@ -81,74 +149,35 @@ go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
 ```
 
-### Fallback Mode (Node.js only)
-If tools are not installed, the platform falls back to:
-- DNS enumeration via Node.js `dns` module + common wordlist
-- HTTP probing via `node-fetch`
-- TCP socket scanning for port detection
-- Header-based service fingerprinting
+> Without these tools installed, the platform falls back to pure Node.js — DNS enumeration via wordlist, HTTP probing via `fetch`, TCP socket scanning.
 
 ---
 
-## Modules
-
-### Module 1: Asset Discovery
-- Subdomain enumeration (subfinder + DNS wordlist fallback)
-- Live host validation (httpx / node-fetch)
-- IP resolution (dnsx / Node.js dns)
-- CDN/WAF/cloud provider detection
-- Subdomain takeover detection
-
-### Module 2: DNS & Email Security
-- SPF record analysis (presence, policy strength, lookup count)
-- DMARC validation (policy level, reporting config)
-- DKIM key detection (common selectors)
-- DNSSEC check
-- Zone transfer (AXFR) testing
-
-### Module 3: Port Scanning
-- Top 1000 ports via nmap / common ports via TCP sockets
-- Service identification
-- Dangerous exposure flagging (Redis, MongoDB, Docker API, etc.)
-
-### Module 4: Service Fingerprinting
-- Banner grabbing
-- Version extraction
-- HTTP security header audit
-- Known vulnerable version detection
-
-### Module 5: Web Tech Fingerprinting
-- HTTP headers, HTML, JavaScript, cookie analysis
-- CMS detection (WordPress, Drupal, Joomla, Magento, Shopify)
-- Framework detection (React, Angular, Vue, Next.js, Django, Laravel…)
-- CDN detection (Cloudflare, Akamai, Fastly, CloudFront)
-- Path probing for exposed admin panels, .env files, .git repos
-
----
-
-## API Endpoints
+## 📡 API Reference
 
 ```
-POST   /api/scan/start          Start a new scan { domain }
-GET    /api/scan                 List all scans
-GET    /api/scan/:id             Get scan status + full results
-DELETE /api/scan/:id             Cancel a running scan
+POST   /api/scan/start            Start scan { domain, scanMode: 'full'|'single' }
+GET    /api/scan                  List all scans
+GET    /api/scan/:id              Get scan status + full results
+DELETE /api/scan/:id              Cancel a running scan
+GET    /api/scan/compare?a=&b=    Compare two scans
 
-GET    /api/report/:id/json      Full JSON report
-GET    /api/report/:id/executive Executive summary
+GET    /api/report/:id/pdf        Download PDF report
+GET    /api/report/:id/markdown   Download Markdown report
+GET    /api/report/:id/download   Download full JSON report
 
-WS     ws://localhost:3001?scanId=<id>  Real-time scan progress
+WS     ws://localhost:3001?scanId=<id>   Real-time scan progress
 ```
 
 ---
 
-## Risk Scoring
+## 📊 Risk Scoring
 
-Findings are scored by severity and aggregated into a 0–100 risk score:
+Findings are aggregated into a **0–100 risk score** with letter grade:
 
 | Grade | Score | Label |
-|-------|-------|-------|
-| A+/A | 0–20 | Low risk |
+|---|---|---|
+| A+ / A | 0–20 | Low risk |
 | B | 21–30 | Moderate |
 | C | 31–45 | Elevated |
 | D | 46–60 | High risk |
@@ -157,29 +186,46 @@ Findings are scored by severity and aggregated into a 0–100 risk score:
 
 ---
 
-## Customizing the UI (Theming)
+## 🎨 Theming
 
-The frontend features a highly polished, professional dark/light theme engine built with CSS variables. 
+The UI uses a **Datadog-inspired dark theme** with full CSS variable support. To customize colors, edit:
 
-To completely change the app's color scheme (backgrounds, accents, glowing effects, and severity badges), simply edit the centralized CSS tokens in:
-`frontend/src/theme.css`
+```
+frontend/src/theme.css
+```
 
-Changes saved to `theme.css` will hot-reload instantly in the browser. You do not need to hunt through component styles or logic to rebrand the platform.
-
-**Keyboard Shortcuts:**
-Press `?` in the browser at any time to open the quick-actions keyboard shortcut menu.
+All changes hot-reload instantly in the browser. The file contains:
+- Background shades (`--bg-main`, `--bg-card`)
+- Datadog purple primary accent (`--accent-blue: #7b4fff`)
+- Datadog orange for warnings (`--accent-orange: #ff6b2b`)
+- Status colors, border opacities, and glass effects
 
 ---
 
-## Adding New Modules
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+K` | Global finding search |
+| `Ctrl+N` | New scan / focus domain input |
+| `Ctrl+H` | Go to Scan History |
+| `Ctrl+D` | Go to Dashboard |
+| `?` | Show shortcuts modal |
+| `Esc` | Close modal |
+
+---
+
+## 🧩 Adding New Modules
 
 1. Create `backend/modules/yourModule.js` — export `async function runYourModule(domain, onProgress)`
-2. Return `{ findings: [], ...data }` — findings must have `{ id, severity, title, description, module, remediation }`
-3. Add to the `moduleList` array in `routes/scan.js`
-4. Add a new tab component in `frontend/src/App.jsx`
+2. Return `{ findings: [], ...data }` — findings: `{ id, severity, title, description, module, remediation }`
+3. Register in `routes/scan.js` `moduleList` array with `key`, `label`, `weight`, `runner`
+4. Add a tab component in `frontend/src/App.jsx`
 
 ---
 
-## Responsible Use
+## ⚠️ Responsible Use
 
-This tool is intended for authorized security assessments only. Always obtain explicit written permission before scanning any domain you do not own. Unauthorized scanning may violate computer fraud laws in your jurisdiction.
+This tool is intended for **authorized security assessments only**.  
+Always obtain **explicit written permission** before scanning any domain you do not own.  
+Unauthorized scanning may violate the Computer Fraud and Abuse Act (CFAA) and similar laws in your jurisdiction.
