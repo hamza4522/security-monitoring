@@ -8,11 +8,14 @@ A modular, full-stack external security reconnaissance platform. No agents or so
 
 | Feature | Description |
 |---|---|
+| ⚙️ **Custom Scan Mode** | Select exactly which modules to run. Choose from Full Scan, Single Domain, or hand-pick specific modules for targeted assessments. |
+| ↻ **1-Click Rescan** | Instantly re-run past scans with their exact configuration directly from the Dashboard or detailed Scan View. |
+| 🍪 **Cookie Security Scanner** | Comprehensive analysis of all cookies (Secure, HttpOnly, SameSite) and detection of misconfigurations across multiple paths. |
+| 🔗 **SRI Scanner** | Audits external scripts and stylesheets for missing Subresource Integrity attributes and validates existing hashes. |
 | 🔗 **Public API Discovery** | Enumerates Swagger/OpenAPI specs, GraphQL endpoints, REST paths, WSDL/SOAP, JS-extracted API calls, robots.txt, form actions |
 | 📋 **NVD CVE Enrichment** | Queries the NIST National Vulnerability Database (CVE API v2) for real CVEs based on detected technologies |
 | 📦 **Retire.js Integration** | Scans JS libraries loaded on target pages against the Retire.js vulnerability database |
 | 🛡️ **Vulnerability Assessment Tab** | New dedicated tab showing all 120+ security checks with pass/fail/warn/info filtering by category |
-| 🐛 **False Positive Fixes** | Soft-404 detection now uses body-length comparison; CVE header patterns now require version numbers |
 
 ---
 
@@ -103,6 +106,8 @@ Open **http://localhost:3000**
 | **Nuclei-style Checks** | Template-based CVE probes, panel detection, tech misconfig |
 | **CMS Vulnerability Scan** | WordPress/Drupal/Joomla/Magento-specific vulnerability probes |
 | **Active Web Attacks** | SQL injection, XSS, command injection, path traversal probing |
+| **Cookie Security** | Missing flags, overly broad domains, exposed sessions, debug cookies |
+| **Subresource Integrity (SRI)** | Missing integrity attributes on CDNs, invalid hashes, crossorigin misconfigs |
 
 ### 🔎 Advanced Intelligence
 | Module | What It Does |
@@ -171,6 +176,9 @@ After a scan completes, results are shown across **20 tabs**:
 | Takeover | Subdomain takeover vulnerability status |
 | ⚔ Web Attacks | Active attack probe results |
 | 🏛 CMS | CMS-specific vulnerability findings |
+| 🔬 Nessus | Nessus-style vulnerability scanner results |
+| 🍪 Cookies | Comprehensive cookie security and misconfiguration findings |
+| 🔗 SRI | Subresource Integrity audit results for external resources |
 | Findings | All findings filterable by severity |
 | Live Log | Real-time scan progress log |
 
@@ -179,7 +187,7 @@ After a scan completes, results are shown across **20 tabs**:
 ## Backend API
 
 ```
-POST   /api/scan/start                Start a new scan  { domain }
+POST   /api/scan/start                Start a new scan  { domain, scanMode, selectedModules }
 GET    /api/scan                      List all scans
 GET    /api/scan/:id                  Get scan status + full results
 DELETE /api/scan/:id                  Cancel a running scan

@@ -207,7 +207,7 @@ export default function App() {
           <DashboardView scans={scans} domainInputRef={domainInputRef} onStartScan={(scan) => { setScans(p => [scan, ...p]); openScan(scan.scanId || scan.id); }} onSelectScan={openScan} />
         )}
         {view === "scan" && activeScan && (
-          <ScanView scan={activeScan} activeTab={activeTab} setActiveTab={setActiveTab} scanLog={scanLog} />
+          <ScanView scan={activeScan} activeTab={activeTab} setActiveTab={setActiveTab} scanLog={scanLog} onStartScan={(scan) => { setScans(p => [scan, ...p]); openScan(scan.scanId || scan.id); }} />
         )}
         {view === "history" && (<HistoryView scans={scans} onSelectScan={openScan}
           compareIds={compareIds} setCompareIds={setCompareIds}
@@ -299,6 +299,55 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [scanMode, setScanMode] = useState("full");
+  // scanType: "full" | "single" | "custom"
+  const [scanType, setScanType] = useState("full");
+  const [selectedModules, setSelectedModules] = useState([]);
+  const [customScope, setCustomScope] = useState("full"); // "full" or "single"
+
+  // All available modules for the picker
+  const MODULE_CATALOG = [
+    { key: "whoisLookup",          label: "WHOIS & IP",        icon: "🌐", category: "Recon" },
+    { key: "assetDiscovery",       label: "Asset Discovery",   icon: "🗺️",  category: "Recon" },
+    { key: "dnsAssessment",        label: "DNS & Email",       icon: "📧", category: "Recon" },
+    { key: "sslScan",              label: "SSL/TLS Scan",      icon: "🔒", category: "Recon" },
+    { key: "portScan",             label: "Port Scanning",     icon: "🔌", category: "Recon" },
+    { key: "serviceFingerprint",   label: "Service Fingerprint",icon: "🔍",category: "Recon" },
+    { key: "webTechFingerprint",   label: "Web Tech",          icon: "🧩", category: "Recon" },
+    { key: "wafDetector",          label: "WAF / CDN",         icon: "🛡️", category: "Recon" },
+    { key: "vulnAssessment",       label: "Vuln Assessment",   icon: "⚠️", category: "Vulnerability" },
+    { key: "nucleiChecks",         label: "Nuclei Checks",     icon: "🎯", category: "Vulnerability" },
+    { key: "wapitiscan",           label: "Web Attacks",       icon: "⚔️", category: "Vulnerability" },
+    { key: "cmsVulnScan",          label: "CMS Scan",          icon: "🏛️", category: "Vulnerability" },
+    { key: "nessusScanner",        label: "Nessus Scan",       icon: "🔬", category: "Vulnerability" },
+    { key: "cookieSecurityScanner",label: "Cookie Security",   icon: "🍪", category: "Vulnerability" },
+    { key: "sriScanner",           label: "SRI Check",         icon: "🔗", category: "Vulnerability" },
+    { key: "jsSecretScanner",      label: "JS Secrets",        icon: "🔑", category: "Intelligence" },
+    { key: "subdomainTakeover",    label: "Subdomain Takeover",icon: "🚩", category: "Intelligence" },
+    { key: "cveEnrichment",        label: "CVE Enrichment",    icon: "📋", category: "Intelligence" },
+    { key: "retireJsChecker",      label: "Retire.js",         icon: "📦", category: "Intelligence" },
+    { key: "apiDiscovery",         label: "API Discovery",     icon: "🔗", category: "Intelligence" },
+  ];
+
+  const CATEGORIES = ["Recon", "Vulnerability", "Intelligence"];
+
+  const toggleModule = (key) => {
+    setSelectedModules(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const selectCategory = (cat) => {
+    const keys = MODULE_CATALOG.filter(m => m.category === cat).map(m => m.key);
+    const allSelected = keys.every(k => selectedModules.includes(k));
+    if (allSelected) {
+      setSelectedModules(prev => prev.filter(k => !keys.includes(k)));
+    } else {
+      setSelectedModules(prev => [...new Set([...prev, ...keys])]);
+    }
+  };
+
+  const selectAll = () => setSelectedModules(MODULE_CATALOG.map(m => m.key));
+  const clearAll  = () => setSelectedModules([]);
 
   const handleScan = async () => {
     // Strip protocol, port, path, query string, fragment — accept any URL form
@@ -309,16 +358,51 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
     // Also strip port (:8080), paths (/...), query (?...), fragment (#...)
     const d = raw.replace(/[/:?#].*$/, "").toLowerCase().trim();
     if (!d) return;
+
+    // Custom scan: require at least 1 module
+    if (scanType === "custom" && selectedModules.length === 0) {
+      setError("Please select at least one module for custom scan.");
+      return;
+    }
+
     setScanning(true); setError("");
     try {
+      const resolvedScanMode = scanType === "single" ? "single" : (scanType === "custom" ? customScope : "full");
+      const body = {
+        domain: d,
+        scanMode: resolvedScanMode,
+        selectedModules: scanType === "custom" ? selectedModules : [],
+      };
       const res = await fetch(`${API_BASE}/scan/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: d, scanMode }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Failed to start scan"); return; }
-      onStartScan({ ...data, id: data.scanId, domain: d, status: "running", progress: 0, scanMode: data.scanMode || scanMode });
+      onStartScan({ ...data, id: data.scanId, domain: d, status: "running", progress: 0, scanMode: data.scanMode || resolvedScanMode });
       setDomain("");
+    } catch (e) {
+      setError("Could not connect to API. Is the backend running?");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleRescan = async (s) => {
+    setScanning(true); setError("");
+    try {
+      const body = {
+        domain: s.domain,
+        scanMode: s.scanMode,
+        selectedModules: s.selectedModules === "all" ? [] : (s.selectedModules || []),
+      };
+      const res = await fetch(`${API_BASE}/scan/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Failed to start rescan"); return; }
+      onStartScan({ ...data, id: data.scanId, domain: s.domain, status: "running", progress: 0, scanMode: data.scanMode || s.scanMode });
     } catch (e) {
       setError("Could not connect to API. Is the backend running?");
     } finally {
@@ -341,32 +425,118 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
       <div className="scan-box">
         <div className="scan-box-inner">
 
-          {/* Scan Mode Toggle */}
+          {/* Scan Type Toggle — 3 options */}
           <div className="scan-mode-row">
-            <div className="scan-mode-label">Scan Mode</div>
+            <div className="scan-mode-label">Scan Type</div>
             <div className="scan-mode-toggle">
               <button
-                id="scan-mode-full"
-                className={`scan-mode-btn ${scanMode === "full" ? "active" : ""}`}
-                onClick={() => setScanMode("full")}
+                id="scan-type-full"
+                className={`scan-mode-btn ${scanType === "full" ? "active" : ""}`}
+                onClick={() => setScanType("full")}
                 disabled={scanning}
               >
                 <span className="scan-mode-icon">🌐</span>
                 <span className="scan-mode-name">Full Scan</span>
-                <span className="scan-mode-desc">Domain + all subdomains</span>
+                <span className="scan-mode-desc">All modules · All subdomains</span>
               </button>
               <button
-                id="scan-mode-single"
-                className={`scan-mode-btn ${scanMode === "single" ? "active single" : ""}`}
-                onClick={() => setScanMode("single")}
+                id="scan-type-single"
+                className={`scan-mode-btn ${scanType === "single" ? "active single" : ""}`}
+                onClick={() => setScanType("single")}
                 disabled={scanning}
               >
                 <span className="scan-mode-icon">🎯</span>
                 <span className="scan-mode-name">Single Domain</span>
-                <span className="scan-mode-desc">Primary domain only</span>
+                <span className="scan-mode-desc">All modules · Primary only</span>
+              </button>
+              <button
+                id="scan-type-custom"
+                className={`scan-mode-btn ${scanType === "custom" ? "active custom" : ""}`}
+                onClick={() => { setScanType("custom"); if (selectedModules.length === 0) selectAll(); }}
+                disabled={scanning}
+              >
+                <span className="scan-mode-icon">⚙️</span>
+                <span className="scan-mode-name">Custom Scan</span>
+                <span className="scan-mode-desc">Pick modules to run</span>
               </button>
             </div>
           </div>
+
+          {/* Custom Scan Configuration */}
+          {scanType === "custom" && (
+            <div className="custom-scan-config" style={{ marginBottom: "20px" }}>
+              <div className="custom-scope-row" style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px", background: "rgba(0,0,0,0.15)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+                <div className="scan-mode-label" style={{ marginBottom: 0, width: "120px" }}>Target Scope</div>
+                <div className="scope-toggle-group" style={{ display: "flex", gap: "10px", flex: 1 }}>
+                  <button className={`scan-mode-btn ${customScope === "full" ? "active" : ""}`} onClick={() => setCustomScope("full")} style={{ flex: 1, flexDirection: "row", alignItems: "center", padding: "10px 16px" }}>
+                    <span className="scan-mode-icon" style={{ marginBottom: 0 }}>🌐</span>
+                    <div>
+                      <div className="scan-mode-name" style={{ fontSize: "13px" }}>All Subdomains</div>
+                      <div className="scan-mode-desc">Primary domain + discovered subdomains</div>
+                    </div>
+                  </button>
+                  <button className={`scan-mode-btn ${customScope === "single" ? "active single" : ""}`} onClick={() => setCustomScope("single")} style={{ flex: 1, flexDirection: "row", alignItems: "center", padding: "10px 16px" }}>
+                    <span className="scan-mode-icon" style={{ marginBottom: 0 }}>🎯</span>
+                    <div>
+                      <div className="scan-mode-name" style={{ fontSize: "13px" }}>Single Domain</div>
+                      <div className="scan-mode-desc">Only the provided target domain</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="module-picker">
+                <div className="module-picker-header">
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: "14px", color: "#fff" }}>⚙️ Select Modules to Execute</span>
+                    <div style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "12px", marginTop: "4px" }}>
+                      {selectedModules.length} of {MODULE_CATALOG.length} modules selected
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button className="filter-btn" onClick={selectAll} style={{ fontSize: "12px", padding: "6px 16px" }}>Select All</button>
+                    <button className="filter-btn" onClick={clearAll}  style={{ fontSize: "12px", padding: "6px 16px" }}>Clear All</button>
+                  </div>
+                </div>
+              {CATEGORIES.map(cat => {
+                const catModules = MODULE_CATALOG.filter(m => m.category === cat);
+                const allCatSelected = catModules.every(m => selectedModules.includes(m.key));
+                return (
+                  <div key={cat} className="module-picker-group">
+                    <div className="module-picker-group-header" onClick={() => selectCategory(cat)} style={{ padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px", transition: "background 0.2s" }}>
+                      <span className={`module-picker-cat-toggle ${allCatSelected ? "checked" : ""}`}>
+                        {allCatSelected ? "☑" : "☐"}
+                      </span>
+                      <span style={{ fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#fff" }}>
+                        {cat}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--accent-blue)", marginLeft: "auto", fontWeight: 500 }}>
+                        {catModules.filter(m => selectedModules.includes(m.key)).length} / {catModules.length}
+                      </span>
+                    </div>
+                    <div className="module-picker-grid">
+                      {catModules.map(m => {
+                        const active = selectedModules.includes(m.key);
+                        return (
+                          <button
+                            key={m.key}
+                            id={`module-pick-${m.key}`}
+                            className={`module-chip ${active ? "active" : ""}`}
+                            onClick={() => toggleModule(m.key)}
+                          >
+                            <span className="module-chip-icon">{m.icon}</span>
+                            <span className="module-chip-label">{m.label}</span>
+                            {active && <span className="module-chip-check">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </div>
+          )}
 
           <label className="scan-label">Target Domain</label>
           <div className="scan-input-row">
@@ -379,16 +549,23 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
               placeholder="e.g. example.com"
               disabled={scanning}
             />
-            <button className="scan-btn" onClick={handleScan} disabled={scanning || !domain.trim()}>
+            <button className="scan-btn" onClick={handleScan} disabled={scanning || !domain.trim() || (scanType === "custom" && selectedModules.length === 0)}>
               {scanning ? <span className="spinner" /> : null}
-              {scanning ? "Starting..." : scanMode === "full" ? "Full Scan" : "Single Scan"}
+              {scanning ? "Starting..."
+                : scanType === "full"   ? "🌐 Full Scan"
+                : scanType === "single" ? "🎯 Single Scan"
+                : `⚙️ Run ${selectedModules.length} Module${selectedModules.length !== 1 ? "s" : ""}`}
             </button>
           </div>
           {error && <div className="scan-error">{error}</div>}
           <div className="scan-hint">
-            {scanMode === "full"
-              ? "🌐 Full Scan: discovers all subdomains then runs every module against each. Thorough but slower."
-              : "🎯 Single Domain: scans only the target domain — no subdomain discovery or expansion. Fast and focused."}
+            {scanType === "full"
+              ? "🌐 Full Scan: discovers all subdomains then runs ALL 20 modules against each. Most thorough."
+              : scanType === "single"
+              ? "🎯 Single Domain: runs ALL modules against the primary domain only — no subdomain discovery."
+              : selectedModules.length === 0
+              ? "⚙️ Custom Scan: select the modules you want to run above."
+              : `⚙️ Custom Scan: will run ${selectedModules.length} selected module(s). Unselected modules will be skipped.`}
           </div>
         </div>
       </div>
@@ -506,7 +683,20 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
                     </span>
                   ) : "—"}</td>
                   <td className="time-cell">{new Date(s.startedAt).toLocaleString()}</td>
-                  <td className="arrow-cell">›</td>
+                  <td className="arrow-cell" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px", paddingTop: "10px" }}>
+                    <button 
+                      className="filter-btn" 
+                      style={{ fontSize: "11px", padding: "4px 8px", background: "rgba(255,255,255,0.05)" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRescan(s);
+                      }}
+                      disabled={scanning}
+                    >
+                      ↻ Rescan
+                    </button>
+                    <span>›</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -518,7 +708,36 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
 }
 
 // ── Scan View ─────────────────────────────────────────────────────────────────
-function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
+function ScanView({ scan, activeTab, setActiveTab, scanLog, onStartScan }) {
+  const [rescanLoading, setRescanLoading] = useState(false);
+
+  const handleRescan = async () => {
+    if (!onStartScan) return;
+    setRescanLoading(true);
+    try {
+      const body = {
+        domain: scan.domain,
+        scanMode: scan.scanMode,
+        selectedModules: scan.selectedModules === "all" ? [] : (scan.selectedModules || []),
+      };
+      const res = await fetch(`${API_BASE}/scan/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Started new rescan!", "success");
+        onStartScan({ ...data, id: data.scanId, domain: scan.domain, status: "running", progress: 0, scanMode: data.scanMode || scan.scanMode });
+      } else {
+        showToast(data.error || "Failed to rescan", "error");
+      }
+    } catch (e) {
+      showToast("Could not connect to API", "error");
+    } finally {
+      setRescanLoading(false);
+    }
+  };
+
   const sslData = scan.modules?.sslScan?.data;
   const sslBadge = sslData?.summary?.expired > 0
     ? ` 🔴${sslData.summary.expired}`
@@ -562,6 +781,24 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
       ? ` (${nessusData.summary.totalPlugins})`
       : "";
 
+  const cookieData = scan.modules?.cookieSecurityScanner?.data;
+  const cookieBadge = (() => {
+    const d = cookieData?.multiTarget
+      ? (cookieData.targetResults?.[0] || {})
+      : (cookieData || {});
+    const issues = (d.findings || []).length;
+    return issues > 0 ? ` 🍪${issues}` : "";
+  })();
+
+  const sriData = scan.modules?.sriScanner?.data;
+  const sriBadge = (() => {
+    const d = sriData?.multiTarget
+      ? (sriData.targetResults?.[0] || {})
+      : (sriData || {});
+    const missing = d.summary?.missingIntegrity || 0;
+    return missing > 0 ? ` ⚠️${missing}` : "";
+  })();
+
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "whois", label: "🌐 WHOIS & IP" },
@@ -583,6 +820,8 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
     { id: "cms", label: `🏛 CMS ${scan.modules?.cmsVulnScan?.data?.findings?.length ? `(${scan.modules.cmsVulnScan.data.findings.length})` : ""}` },
     { id: "findings", label: `Findings ${scan.findings?.length ? `(${scan.findings.length})` : ""}` },
     { id: "nessus", label: `🔬 Nessus${nessusBadge}` },
+    { id: "cookies", label: `🍪 Cookies${cookieBadge}` },
+    { id: "sri", label: `🔗 SRI${sriBadge}` },
     { id: "log", label: "Live Log" },
   ];
 
@@ -609,6 +848,14 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
           {scan.riskScore && <RiskScoreCard riskScore={scan.riskScore} />}
           {scan.status === "complete" && (
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button 
+                className="export-btn" 
+                style={{ background: "rgba(59, 130, 246, 0.15)", color: "#60a5fa", borderColor: "rgba(59, 130, 246, 0.3)" }}
+                onClick={handleRescan}
+                disabled={rescanLoading}
+              >
+                {rescanLoading ? "↻ Starting..." : "↻ Rescan"}
+              </button>
               <a href={`${API_BASE}/report/${scan.id}/pdf`} download className="export-btn" style={{ background: "rgba(225, 29, 72, 0.15)", color: "#f43f5e", borderColor: "rgba(225, 29, 72, 0.3)" }}>📄 PDF
               </a>
               <a href={`${API_BASE}/report/${scan.id}/markdown`} download className="export-btn">📝 MD
@@ -655,6 +902,8 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
         {activeTab === "cms" && <CMSScanTab data={scan.modules?.cmsVulnScan?.data} status={scan.modules?.cmsVulnScan?.status} />}
         {activeTab === "findings" && <FindingsTab findings={scan.findings} />}
         {activeTab === "nessus" && <NessusScannerTab data={scan.modules?.nessusScanner?.data} status={scan.modules?.nessusScanner?.status} />}
+        {activeTab === "cookies" && <CookieSecurityTab data={scan.modules?.cookieSecurityScanner?.data} status={scan.modules?.cookieSecurityScanner?.status} />}
+        {activeTab === "sri" && <SRIScannerTab data={scan.modules?.sriScanner?.data} status={scan.modules?.sriScanner?.status} />}
         {activeTab === "log" && <LiveLogTab logs={scanLog} />}
       </div>
     </div>
@@ -664,36 +913,46 @@ function ScanView({ scan, activeTab, setActiveTab, scanLog }) {
 // ── Module Pipeline ───────────────────────────────────────────────────────────
 function ModulePipeline({ modules }) {
   const MODULES = [
-    { key: "whoisLookup", label: "WHOIS & IP" },
-    { key: "assetDiscovery", label: "Assets" },
-    { key: "sslScan", label: "SSL/TLS" },
-    { key: "dnsAssessment", label: "DNS & Email" },
-    { key: "portScan", label: "Port Scan" },
-    { key: "serviceFingerprint", label: "Services" },
-    { key: "webTechFingerprint", label: "Web Tech" },
-    { key: "wafDetector", label: "WAF/CDN" },
-    { key: "vulnAssessment", label: "Vuln Assess" },
-    { key: "nucleiChecks", label: "Nuclei" },
-    { key: "cveEnrichment", label: "CVE Lookup" },
-    { key: "retireJsChecker", label: "Retire.js" },
-    { key: "apiDiscovery", label: "API Discover" },
-    { key: "jsSecretScanner", label: "JS Secrets" },
-    { key: "subdomainTakeover", label: "Takeover" },
-    { key: "wapitiscan", label: "Web Attacks" },
-    { key: "cmsVulnScan", label: "CMS Scan" },
-    { key: "nessusScanner", label: "Nessus Scan" },
+    { key: "whoisLookup",          label: "WHOIS & IP" },
+    { key: "assetDiscovery",       label: "Assets" },
+    { key: "sslScan",              label: "SSL/TLS" },
+    { key: "dnsAssessment",        label: "DNS & Email" },
+    { key: "portScan",             label: "Port Scan" },
+    { key: "serviceFingerprint",   label: "Services" },
+    { key: "webTechFingerprint",   label: "Web Tech" },
+    { key: "wafDetector",          label: "WAF/CDN" },
+    { key: "vulnAssessment",       label: "Vuln Assess" },
+    { key: "nucleiChecks",         label: "Nuclei" },
+    { key: "cveEnrichment",        label: "CVE Lookup" },
+    { key: "retireJsChecker",      label: "Retire.js" },
+    { key: "apiDiscovery",         label: "API Discover" },
+    { key: "jsSecretScanner",      label: "JS Secrets" },
+    { key: "subdomainTakeover",    label: "Takeover" },
+    { key: "wapitiscan",           label: "Web Attacks" },
+    { key: "cmsVulnScan",          label: "CMS Scan" },
+    { key: "nessusScanner",        label: "Nessus Scan" },
+    { key: "cookieSecurityScanner",label: "Cookies" },
+    { key: "sriScanner",           label: "SRI Scan" },
   ];
+  // Only show modules that were actually selected (not skipped)
+  const activeModules = MODULES.filter(m => modules?.[m.key]?.status !== "skipped");
+  const displayModules = activeModules.length > 0 ? activeModules : MODULES;
+
   return (
     <div className="module-pipeline">
-      {MODULES.map((m, i) => {
+      {displayModules.map((m, i) => {
         const mod = modules?.[m.key];
         const status = mod?.status || "pending";
         return (
           <div key={m.key} className="pipeline-step">
             <div className={`pipeline-node ${status}`}>
-              {status === "running" ? <span className="spinner-sm" /> : status === "complete" ? "✓" : status === "error" ? "✗" : i + 1}
+              {status === "running" ? <span className="spinner-sm" />
+                : status === "complete" ? "✓"
+                : status === "error"    ? "✗"
+                : status === "skipped"  ? "—"
+                : i + 1}
             </div>
-            <div className="pipeline-label">{m.label}</div>
+            <div className="pipeline-label" style={{ opacity: status === "skipped" ? 0.35 : 1 }}>{m.label}</div>
             {i < MODULES.length - 1 && <div className={`pipeline-connector ${status === "complete" ? "done" : ""}`} />}
           </div>
         );
@@ -3514,5 +3773,412 @@ function ShortcutsModal({ onClose }) {
       </div>
     </div>
   );
+}
+
+// ── Cookie Security Tab ───────────────────────────────────────────────────────
+function CookieSecurityTab({ data, status }) {
+  const [filter, setFilter] = useState("all");
+
+  // Handle multi-target
+  const raw = data?.multiTarget ? (data.targetResults?.[0] || {}) : (data || {});
+
+  if (status === "pending" || status === "running") {
+    return <div className="empty-state"><span className="spinner" /> Cookie Security scan running…</div>;
+  }
+  if (!raw || !raw.cookies) {
+    return <div className="empty-state">🍪 No cookie data available for this scan.</div>;
+  }
+
+  const { cookies = [], findings = [], summary = {}, domain } = raw;
+  const filtered = filter === "all" ? findings : findings.filter(f => f.severity === filter);
+
+  const SAMESITE_COLOR = { Strict: "#16a34a", Lax: "#d97706", None: "#e11d48" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+
+      {/* Summary row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
+        {[
+          { label: "Total Cookies", val: summary.totalCookies || 0, icon: "🍪" },
+          { label: "Missing Secure", val: summary.missingSecure || 0, icon: "🔓", warn: summary.missingSecure > 0 },
+          { label: "Missing HttpOnly", val: summary.missingHttpOnly || 0, icon: "📜", warn: summary.missingHttpOnly > 0 },
+          { label: "Missing SameSite", val: summary.missingSameSite || 0, icon: "🌐", warn: summary.missingSameSite > 0 },
+          { label: "JWT Cookies", val: summary.jwtCookies || 0, icon: "🔑", warn: summary.jwtCookies > 0 },
+          { label: "Long-Lived", val: summary.longLived || 0, icon: "⏳", warn: summary.longLived > 0 },
+          { label: "Debug Cookies", val: summary.debugCookies || 0, icon: "🐛", warn: summary.debugCookies > 0 },
+          { label: "Issues Found", val: findings.length, icon: "⚠️", warn: findings.length > 0 },
+        ].map(({ label, val, icon, warn }) => (
+          <div key={label} style={{
+            background: warn && val > 0 ? "rgba(225,29,72,0.08)" : "var(--card-bg)",
+            border: `1px solid ${warn && val > 0 ? "rgba(225,29,72,0.3)" : "var(--border)"}`,
+            borderRadius: "10px", padding: "14px 16px", textAlign: "center"
+          }}>
+            <div style={{ fontSize: "22px", marginBottom: "4px" }}>{icon}</div>
+            <div style={{ fontSize: "24px", fontWeight: 700, color: warn && val > 0 ? "#f43f5e" : "var(--text)" }}>{val}</div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Cookie inventory table */}
+      {cookies.length > 0 && (
+        <div className="card">
+          <div className="card-header">🍪 Cookie Inventory ({cookies.length} found)</div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Secure</th>
+                  <th>HttpOnly</th>
+                  <th>SameSite</th>
+                  <th>Domain</th>
+                  <th>Path</th>
+                  <th>Max-Age</th>
+                  <th>Size</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cookies.map((c, i) => {
+                  const ok = c.secure && c.httpOnly && c.sameSite;
+                  return (
+                    <tr key={i} style={{ background: !ok ? "rgba(225,29,72,0.04)" : undefined }}>
+                      <td><code style={{ color: "#60a5fa", fontSize: "12px" }}>{c.name}</code></td>
+                      <td style={{ textAlign: "center" }}>
+                        <span style={{ fontSize: "16px" }}>{c.secure ? "✅" : "❌"}</span>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span style={{ fontSize: "16px" }}>{c.httpOnly ? "✅" : "❌"}</span>
+                      </td>
+                      <td>
+                        {c.sameSite ? (
+                          <span style={{
+                            padding: "2px 8px", borderRadius: "99px", fontSize: "11px", fontWeight: 600,
+                            background: `${SAMESITE_COLOR[c.sameSite] || "#0284c7"}20`,
+                            color: SAMESITE_COLOR[c.sameSite] || "#0284c7"
+                          }}>{c.sameSite}</span>
+                        ) : <span style={{ color: "#e11d48", fontSize: "11px" }}>missing</span>}
+                      </td>
+                      <td><code style={{ fontSize: "11px", color: "var(--text-muted)" }}>{c.domain || "—"}</code></td>
+                      <td><code style={{ fontSize: "11px", color: "var(--text-muted)" }}>{c.path || "/"}</code></td>
+                      <td style={{ fontSize: "11px" }}>
+                        {c.maxAge !== null ? `${Math.round(c.maxAge / 86400)}d` : c.expires ? "explicit" : "session"}
+                      </td>
+                      <td style={{ fontSize: "11px", color: c.size > 4096 ? "#e11d48" : "var(--text-muted)" }}>
+                        {c.size > 1024 ? `${(c.size / 1024).toFixed(1)}KB` : `${c.size}B`}
+                      </td>
+                      <td style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }} title={c.source}>
+                          {(() => { try { return new URL(c.source).pathname || "/"; } catch (_) { return c.source; } })()}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Findings */}
+      {findings.length > 0 && (
+        <div className="card">
+          <div className="card-header">⚠️ Cookie Security Issues ({findings.length})</div>
+          <div style={{ display: "flex", gap: "6px", padding: "10px 16px", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+            {["all", "critical", "high", "medium", "low", "info"].map(s => (
+              <button key={s} className={`filter-btn ${filter === s ? `active ${s}` : ""}`} onClick={() => setFilter(s)}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+                <span style={{ marginLeft: 4, fontSize: "10px" }}>
+                  ({s === "all" ? findings.length : findings.filter(f => f.severity === s).length})
+                </span>
+              </button>
+            ))}
+          </div>
+          <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {filtered.length === 0
+              ? <div className="empty-state">No issues at this severity level.</div>
+              : filtered.map(f => (
+                <div key={f.id} style={{
+                  border: `1px solid var(--border)`,
+                  borderLeft: `4px solid ${SEVERITY_CONFIG[f.severity]?.color || "#9ca3af"}`,
+                  borderRadius: "8px", padding: "12px 14px",
+                  background: "var(--card-bg)"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                    <SeverityBadge severity={f.severity} />
+                    <span style={{ fontWeight: 600, fontSize: "13px" }}>{f.title}</span>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "0 0 6px" }}>{f.description}</p>
+                  {f.remediation && (
+                    <div style={{ background: "rgba(16,163,74,0.08)", border: "1px solid rgba(16,163,74,0.2)", borderRadius: "6px", padding: "8px 10px", fontSize: "11px", color: "#4ade80" }}>
+                      <strong>Fix:</strong> {f.remediation}
+                    </div>
+                  )}
+                  {f.owasp && (
+                    <div style={{ marginTop: "6px", fontSize: "10px", color: "#7c3aed" }}>
+                      🏷 {f.owasp}
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+
+      {findings.length === 0 && cookies.length > 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "32px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
+          <div style={{ fontWeight: 600, color: "#22c55e" }}>All cookies are properly secured!</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px" }}>
+            {cookies.length} cookie(s) found — all have Secure, HttpOnly, and SameSite attributes.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SRI Scanner Tab ───────────────────────────────────────────────────────────
+function SRIScannerTab({ data, status }) {
+  const [filter, setFilter] = useState("all");
+  const [resFilter, setResFilter] = useState("all"); // all | script | stylesheet
+
+  const raw = data?.multiTarget ? (data.targetResults?.[0] || {}) : (data || {});
+
+  if (status === "pending" || status === "running") {
+    return <div className="empty-state"><span className="spinner" /> SRI Scan running…</div>;
+  }
+  if (!raw || !raw.summary) {
+    return <div className="empty-state">🔗 No SRI scan data available.</div>;
+  }
+
+  const { resources = [], findings = [], summary = {}, pages = [] } = raw;
+  const filteredFindings = filter === "all" ? findings : findings.filter(f => f.severity === filter);
+  const filteredResources = resFilter === "all"
+    ? resources
+    : resources.filter(r => r.type === resFilter);
+
+  const CDN_COLORS = {
+    "cdn.jsdelivr.net": "#f0b429", "cdnjs.cloudflare.com": "#f6821f",
+    "unpkg.com": "#1a73e8", "code.jquery.com": "#0769ad",
+    "ajax.googleapis.com": "#4285f4",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+
+      {/* Summary row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
+        {[
+          { label: "Pages Scanned", val: summary.pagesScanned || 0, icon: "📄" },
+          { label: "External Resources", val: summary.totalExternalResources || 0, icon: "🌐" },
+          { label: "External Scripts", val: summary.scripts || 0, icon: "📜" },
+          { label: "External Stylesheets", val: summary.stylesheets || 0, icon: "🎨" },
+          { label: "Missing SRI", val: summary.missingIntegrity || 0, icon: "❌", warn: summary.missingIntegrity > 0 },
+          { label: "High-Risk CDN", val: summary.highRiskCDN || 0, icon: "⚠️", warn: summary.highRiskCDN > 0 },
+          { label: "Missing crossorigin", val: summary.missingCrossOrigin || 0, icon: "🔗", warn: summary.missingCrossOrigin > 0 },
+          { label: "Invalid Hash", val: summary.invalidHash || 0, icon: "🚫", warn: summary.invalidHash > 0 },
+        ].map(({ label, val, icon, warn }) => (
+          <div key={label} style={{
+            background: warn && val > 0 ? "rgba(225,29,72,0.08)" : "var(--card-bg)",
+            border: `1px solid ${warn && val > 0 ? "rgba(225,29,72,0.3)" : "var(--border)"}`,
+            borderRadius: "10px", padding: "14px 16px", textAlign: "center"
+          }}>
+            <div style={{ fontSize: "22px", marginBottom: "4px" }}>{icon}</div>
+            <div style={{ fontSize: "24px", fontWeight: 700, color: warn && val > 0 ? "#f43f5e" : "var(--text)" }}>{val}</div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Pages scanned */}
+      {pages.length > 0 && (
+        <div className="card">
+          <div className="card-header">📄 Pages Scanned</div>
+          <div style={{ padding: "10px 16px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {pages.map((p, i) => (
+              <a key={i} href={p} target="_blank" rel="noopener noreferrer" style={{
+                fontSize: "11px", padding: "3px 10px", borderRadius: "99px",
+                background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.3)",
+                color: "#60a5fa", textDecoration: "none"
+              }}>{p}</a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Resource table */}
+      {resources.length > 0 && (
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: "1px solid var(--border)" }}>
+            <div className="card-header" style={{ padding: 0, border: "none" }}>
+              🌐 External Resources ({resources.length})
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {["all", "script", "stylesheet"].map(f => (
+                <button key={f} className={`filter-btn ${resFilter === f ? "active" : ""}`}
+                  onClick={() => setResFilter(f)} style={{ fontSize: "11px" }}>
+                  {f === "all" ? "All" : f === "script" ? "📜 Scripts" : "🎨 Stylesheets"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Host / CDN</th>
+                  <th>SRI</th>
+                  <th>crossorigin</th>
+                  <th>Hash Valid</th>
+                  <th>URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredResources.map((r, i) => {
+                  const hashError = r.integrity ? validateIntegrityHashFE(r.integrity) : null;
+                  const cdnColor = Object.entries(CDN_COLORS).find(([h]) => r.hostname?.includes(h))?.[1];
+                  return (
+                    <tr key={i} style={{ background: !r.integrity ? "rgba(225,29,72,0.04)" : undefined }}>
+                      <td>
+                        <span style={{
+                          fontSize: "11px", padding: "2px 8px", borderRadius: "99px",
+                          background: r.type === "script" ? "rgba(96,165,250,0.15)" : "rgba(167,139,250,0.15)",
+                          color: r.type === "script" ? "#60a5fa" : "#a78bfa"
+                        }}>{r.type === "script" ? "📜 script" : r.type === "stylesheet" ? "🎨 css" : r.type}</span>
+                      </td>
+                      <td>
+                        <span style={{
+                          fontSize: "11px", padding: "2px 8px", borderRadius: "6px",
+                          background: cdnColor ? `${cdnColor}22` : "var(--card-bg)",
+                          color: cdnColor || "var(--text)",
+                          border: `1px solid ${cdnColor ? `${cdnColor}44` : "var(--border)"}`,
+                          fontWeight: r.isHighRiskCDN ? 600 : 400
+                        }}>
+                          {r.isHighRiskCDN ? "⚠️ " : ""}{r.hostname}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span style={{ fontSize: "16px" }}>{r.integrity ? "✅" : "❌"}</span>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {r.crossorigin
+                          ? <span style={{ fontSize: "11px", color: "#22c55e" }}>{r.crossorigin}</span>
+                          : <span style={{ fontSize: "11px", color: "#e11d48" }}>missing</span>}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {r.integrity
+                          ? hashError
+                            ? <span style={{ fontSize: "11px", color: "#f97316" }} title={hashError}>⚠️</span>
+                            : <span style={{ fontSize: "11px", color: "#22c55e" }}>✓</span>
+                          : <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>—</span>}
+                      </td>
+                      <td style={{ maxWidth: "240px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <a href={r.src} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "10px", color: "#60a5fa", textDecoration: "none" }}
+                          title={r.src}>{r.src}</a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Findings */}
+      {findings.length > 0 && (
+        <div className="card">
+          <div className="card-header">⚠️ SRI Findings ({findings.length})</div>
+          <div style={{ display: "flex", gap: "6px", padding: "10px 16px", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+            {["all", "critical", "high", "medium", "low", "info"].map(s => (
+              <button key={s} className={`filter-btn ${filter === s ? `active ${s}` : ""}`} onClick={() => setFilter(s)}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+                <span style={{ marginLeft: 4, fontSize: "10px" }}>
+                  ({s === "all" ? findings.length : findings.filter(f => f.severity === s).length})
+                </span>
+              </button>
+            ))}
+          </div>
+          <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {filteredFindings.length === 0
+              ? <div className="empty-state">No issues at this severity level.</div>
+              : filteredFindings.map(f => (
+                <div key={f.id} style={{
+                  border: `1px solid var(--border)`,
+                  borderLeft: `4px solid ${SEVERITY_CONFIG[f.severity]?.color || "#9ca3af"}`,
+                  borderRadius: "8px", padding: "12px 14px",
+                  background: "var(--card-bg)"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px", flexWrap: "wrap" }}>
+                    <SeverityBadge severity={f.severity} />
+                    <span style={{ fontWeight: 600, fontSize: "13px" }}>{f.title}</span>
+                    {f.isHighRiskCDN && (
+                      <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "99px", background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)" }}>
+                        ⚠️ High-Risk CDN
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "0 0 6px" }}>{f.description}</p>
+                  {f.resource && (
+                    <div style={{ margin: "6px 0", padding: "4px 8px", background: "rgba(15,23,42,0.5)", borderRadius: "4px" }}>
+                      <code style={{ fontSize: "10px", color: "#60a5fa", wordBreak: "break-all" }}>{f.resource}</code>
+                    </div>
+                  )}
+                  {f.remediation && (
+                    <div style={{ background: "rgba(16,163,74,0.08)", border: "1px solid rgba(16,163,74,0.2)", borderRadius: "6px", padding: "8px 10px", fontSize: "11px", color: "#4ade80", whiteSpace: "pre-wrap" }}>
+                      <strong>Fix:</strong> {f.remediation}
+                    </div>
+                  )}
+                  {f.owasp && (
+                    <div style={{ marginTop: "6px", fontSize: "10px", color: "#7c3aed" }}>🏷 {f.owasp}</div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+
+      {/* All clear */}
+      {findings.length === 0 && resources.length > 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "32px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
+          <div style={{ fontWeight: 600, color: "#22c55e" }}>All external resources have valid SRI!</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px" }}>
+            {resources.length} external resource(s) checked — all have integrity attributes.
+          </div>
+        </div>
+      )}
+
+      {resources.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "32px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>ℹ️</div>
+          <div style={{ fontWeight: 600 }}>No external resources found.</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px" }}>
+            The target page does not load any external scripts or stylesheets.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lightweight FE hash validator (mirrors backend logic, avoids import)
+function validateIntegrityHashFE(integrity) {
+  if (!integrity) return "No integrity attribute";
+  const hashes = integrity.trim().split(/\s+/);
+  for (const hash of hashes) {
+    const lower = hash.toLowerCase();
+    const valid = lower.startsWith("sha256-") || lower.startsWith("sha384-") || lower.startsWith("sha512-");
+    if (!valid) return `Invalid algorithm in "${hash.slice(0, 20)}"`;
+  }
+  return null;
 }
 

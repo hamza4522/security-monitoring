@@ -17,16 +17,27 @@ const { runWAFDetector }       = require('../modules/wafDetector');
 const { runCVEEnrichment }     = require('../modules/cveEnrichment');
 const { runRetireJsChecker }   = require('../modules/retireJsChecker');
 const { runAPIDiscovery }      = require('../modules/apiDiscovery');
-const { runNessusScanner }     = require('../modules/nessusScanner');
-const { calculateRiskScore }   = require('../utils/riskScoring');
+const { runNessusScanner }           = require('../modules/nessusScanner');
+const { runCookieSecurityScanner }   = require('../modules/cookieSecurityScanner');
+const { runSRIScanner }              = require('../modules/sriScanner');
+const { calculateRiskScore }         = require('../utils/riskScoring');
 
 module.exports = (scans, broadcast, alertEngine = null) => {
   const router = express.Router();
 
   // Start a new scan
   router.post('/start', async (req, res) => {
-    const { domain, modules = ['all'], scanMode = 'full' } = req.body;
+    const { domain, modules = ['all'], scanMode = 'full', selectedModules = [] } = req.body;
     const resolvedMode = scanMode === 'single' ? 'single' : 'full';
+
+    // selectedModules = array of module keys the user chose.
+    // Empty or missing means 'all' (full scan).
+    const runAll = !selectedModules || selectedModules.length === 0;
+
+    let finalSelectedModules = [...(selectedModules || [])];
+    if (!runAll && resolvedMode === 'full' && !finalSelectedModules.includes('assetDiscovery')) {
+      finalSelectedModules.push('assetDiscovery');
+    }
 
     if (!domain) {
       return res.status(400).json({ error: 'Domain is required' });
@@ -51,6 +62,22 @@ module.exports = (scans, broadcast, alertEngine = null) => {
     // Use the cleaned domain from here on
     const domain_ = cleanDomain;
 
+    // All known module keys
+    const ALL_MODULE_KEYS = [
+      'whoisLookup', 'assetDiscovery', 'sslScan', 'dnsAssessment', 'portScan',
+      'serviceFingerprint', 'webTechFingerprint', 'wafDetector', 'vulnAssessment',
+      'nucleiChecks', 'jsSecretScanner', 'subdomainTakeover', 'wapitiscan',
+      'cmsVulnScan', 'cveEnrichment', 'retireJsChecker', 'apiDiscovery',
+      'nessusScanner', 'cookieSecurityScanner', 'sriScanner',
+    ];
+
+    // Build initial module state — unselected modules start as 'skipped'
+    const moduleState = {};
+    for (const key of ALL_MODULE_KEYS) {
+      const isSelected = runAll || finalSelectedModules.includes(key);
+      moduleState[key] = { status: isSelected ? 'pending' : 'skipped', data: null };
+    }
+
     const scanId = uuidv4();
     const scan = {
       id: scanId,
@@ -59,37 +86,19 @@ module.exports = (scans, broadcast, alertEngine = null) => {
       progress: 0,
       startedAt: new Date().toISOString(),
       completedAt: null,
-      modules: {
-        whoisLookup:        { status: 'pending', data: null },
-        assetDiscovery:     { status: 'pending', data: null },
-        sslScan:            { status: 'pending', data: null },
-        dnsAssessment:      { status: 'pending', data: null },
-        portScan:           { status: 'pending', data: null },
-        serviceFingerprint: { status: 'pending', data: null },
-        webTechFingerprint: { status: 'pending', data: null },
-        wafDetector:        { status: 'pending', data: null },
-        vulnAssessment:     { status: 'pending', data: null },
-        nucleiChecks:       { status: 'pending', data: null },
-        jsSecretScanner:    { status: 'pending', data: null },
-        subdomainTakeover:  { status: 'pending', data: null },
-        wapitiscan:         { status: 'pending', data: null },
-        cmsVulnScan:        { status: 'pending', data: null },
-        cveEnrichment:      { status: 'pending', data: null },
-        retireJsChecker:    { status: 'pending', data: null },
-        apiDiscovery:       { status: 'pending', data: null },
-        nessusScanner:      { status: 'pending', data: null },
-      },
+      modules: moduleState,
       findings: [],
       riskScore: null,
       summary: null,
       scanMode: resolvedMode,
+      selectedModules: runAll ? 'all' : finalSelectedModules,
     };
 
     scans.set(scanId, scan);
-    res.json({ scanId, status: 'started', scanMode: resolvedMode });
+    res.json({ scanId, status: 'started', scanMode: resolvedMode, selectedModules: scan.selectedModules });
 
     // Run modules asynchronously
-    runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine);
+    runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine, runAll ? null : finalSelectedModules);
   });
 
   // Compare two completed scans — GET /api/scan/compare?a=id1&b=id2
@@ -172,7 +181,7 @@ function withTimeout(promise, timeMs, label) {
 const MODULE_TIMEOUT = 120000; // 2 minutes per module
 const GLOBAL_TIMEOUT = 600000; // 10 minutes for the entire scan
 
-async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine) {
+async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine, selectedModules = null) {
   const emit = (event, data) => {
     broadcast(scanId, { event, ...data });
   };
@@ -265,7 +274,26 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       weight: 12,
       runner: runNessusScanner,
     },
+    {
+      // Cookie Security Scanner: per-cookie flag analysis across multiple paths
+      key: 'cookieSecurityScanner',
+      label: 'Cookie Security Scan',
+      weight: 8,
+      runner: runCookieSecurityScanner,
+    },
+    {
+      // SRI Scanner: external script/stylesheet integrity attribute audit
+      key: 'sriScanner',
+      label: 'SRI (Subresource Integrity) Scan',
+      weight: 7,
+      runner: runSRIScanner,
+    },
   ];
+
+  // Filter pipeline to only run selected modules (null = run all)
+  const activeModuleList = selectedModules
+    ? moduleList.filter(m => selectedModules.includes(m.key))
+    : moduleList;
 
   // Global scan timeout — ensures scan ALWAYS finishes
   const globalTimer = setTimeout(() => {
@@ -283,7 +311,7 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   let completedWeight = 0;
 
   try {
-    for (const mod of moduleList) {
+    for (const mod of activeModuleList) {
       if (scan.status === 'cancelled' || scan.status === 'complete') break;
 
       emit('module_start', { module: mod.key, label: mod.label });
@@ -295,6 +323,7 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
           'dnsAssessment', 'portScan', 'serviceFingerprint', 'webTechFingerprint',
           'wafDetector', 'vulnAssessment', 'nucleiChecks', 'jsSecretScanner',
           'wapitiscan', 'cmsVulnScan', 'retireJsChecker',
+          'cookieSecurityScanner', 'sriScanner',
           // cveEnrichment runs only for the primary domain (context-dependent)
         ]);
 

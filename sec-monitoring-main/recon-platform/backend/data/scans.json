@@ -50651,5 +50651,1764 @@
       "nessusHigh": 4
     },
     "scanMode": "single"
+  },
+  {
+    "id": "0e9e2180-18c9-4916-8bc7-f386c3fe0f4e",
+    "domain": "worknigeria.com",
+    "status": "complete",
+    "progress": 10,
+    "startedAt": "2026-06-22T19:03:39.424Z",
+    "completedAt": "2026-06-22T19:03:40.765Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "sslScan": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "hosts": [
+            {
+              "host": "worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 169,
+              "issuer": "Amazon",
+              "subject": "worknigeria.com",
+              "validFrom": "May 25 00:00:00 2026 GMT",
+              "validTo": "Dec  8 23:59:59 2026 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "worknigeria.com",
+                "*.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            }
+          ],
+          "summary": {
+            "total": 1,
+            "valid": 1,
+            "expiring": 0,
+            "expired": 0,
+            "noSSL": 0
+          },
+          "findings": []
+        }
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": {
+      "score": 5,
+      "grade": "A+",
+      "label": "Excellent",
+      "breakdown": {},
+      "color": "#22c55e"
+    },
+    "summary": {
+      "totalAssets": 0,
+      "liveHosts": 0,
+      "openPorts": 0,
+      "exposedServices": 0,
+      "criticalFindings": 0,
+      "highFindings": 0,
+      "mediumFindings": 0,
+      "lowFindings": 0,
+      "technologies": 0,
+      "dnsIssues": 0,
+      "vulnChecks": 0,
+      "vulnPassed": 0,
+      "vulnFailed": 0,
+      "activeProbes": 0,
+      "activeAttackFindings": 0,
+      "xssFound": 0,
+      "sqliFound": 0,
+      "cmdiFound": 0,
+      "detectedPlatforms": [],
+      "cmsFindings": 0,
+      "registrar": null,
+      "daysUntilExpiry": null,
+      "ipCount": 0,
+      "sslScanned": 1,
+      "sslExpired": 0,
+      "sslExpiring": 0,
+      "sslValid": 1,
+      "nessusPlugins": 0,
+      "nessusCritical": 0,
+      "nessusHigh": 0
+    },
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan"
+    ]
+  },
+  {
+    "id": "83198131-b6f1-4578-835f-93d4aeaeb516",
+    "domain": "worknigeria.com",
+    "status": "error",
+    "progress": 10,
+    "startedAt": "2026-06-22T19:06:55.638Z",
+    "completedAt": "2026-06-22T19:07:09.449Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "blog.worknigeria.com",
+            "www.worknigeria.com",
+            "staging.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            },
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.41",
+                "13.35.238.69",
+                "13.35.238.94",
+                "13.35.238.124"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.3",
+                "99.86.20.37",
+                "99.86.20.118",
+                "99.86.20.66"
+              ]
+            },
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.94",
+                "13.35.238.124",
+                "13.35.238.69",
+                "13.35.238.41"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "error",
+        "data": null
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": null,
+    "summary": null,
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan",
+      "assetDiscovery"
+    ],
+    "error": "Server restarted during scan"
+  },
+  {
+    "id": "bb6ceaba-d0bc-4b5e-9f0c-35505a596144",
+    "domain": "worknigeria.com",
+    "status": "error",
+    "progress": 10,
+    "startedAt": "2026-06-22T19:08:28.860Z",
+    "completedAt": "2026-06-22T19:08:46.641Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "blog.worknigeria.com",
+            "www.worknigeria.com",
+            "staging.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            },
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.124",
+                "13.35.238.69",
+                "13.35.238.94",
+                "13.35.238.41"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.37",
+                "99.86.20.66",
+                "99.86.20.3",
+                "99.86.20.118"
+              ]
+            },
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.69",
+                "13.35.238.41",
+                "13.35.238.124",
+                "13.35.238.94"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "error",
+        "data": null
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": null,
+    "summary": null,
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan",
+      "assetDiscovery"
+    ],
+    "error": "Server restarted during scan"
+  },
+  {
+    "id": "2cb8722b-282d-440c-8017-9a1ce84a8441",
+    "domain": "worknigeria.com",
+    "status": "error",
+    "progress": 10,
+    "startedAt": "2026-06-22T19:09:13.360Z",
+    "completedAt": "2026-06-22T19:09:35.283Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "www.worknigeria.com",
+            "staging.worknigeria.com",
+            "blog.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.69",
+                "13.35.238.94",
+                "13.35.238.124",
+                "13.35.238.41"
+              ]
+            },
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.69",
+                "13.35.238.94",
+                "13.35.238.41",
+                "13.35.238.124"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.66",
+                "99.86.20.3",
+                "99.86.20.118",
+                "99.86.20.37"
+              ]
+            },
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "error",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": null,
+    "summary": null,
+    "scanMode": "full",
+    "selectedModules": [
+      "portScan",
+      "assetDiscovery"
+    ],
+    "error": "Server restarted during scan"
+  },
+  {
+    "id": "cdd22172-46ba-4515-996c-c2f08cab8398",
+    "domain": "worknigeria.com",
+    "status": "error",
+    "progress": 10,
+    "startedAt": "2026-06-22T19:12:02.446Z",
+    "completedAt": "2026-06-22T19:13:03.700Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "development.worknigeria.com",
+            "staging.worknigeria.com",
+            "www.worknigeria.com",
+            "blog.worknigeria.com",
+            "blogs.worknigeria.com",
+            "3mtt.development.worknigeria.com",
+            "cpanel.worknigeria.com",
+            "cpcalendars.worknigeria.com",
+            "cpcontacts.worknigeria.com",
+            "mail.worknigeria.com",
+            "webdisk.worknigeria.com",
+            "webmail.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            },
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.124",
+                "13.35.238.94",
+                "13.35.238.41",
+                "13.35.238.69"
+              ]
+            },
+            {
+              "host": "development.worknigeria.com",
+              "ips": [
+                "13.35.36.73",
+                "13.35.36.44",
+                "13.35.36.86",
+                "13.35.36.78"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.118",
+                "99.86.20.37",
+                "99.86.20.66",
+                "99.86.20.3"
+              ]
+            },
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.69",
+                "13.35.238.94",
+                "13.35.238.124",
+                "13.35.238.41"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain blogs.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "blogs.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain 3mtt.development.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "3mtt.development.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpanel.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpanel.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpcalendars.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpcalendars.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpcontacts.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpcontacts.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain mail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "mail.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain webdisk.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "webdisk.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain webmail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "webmail.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+            }
+          ],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "error",
+        "data": null
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain blogs.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "blogs.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain 3mtt.development.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "3mtt.development.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpanel.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpanel.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpcalendars.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpcalendars.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpcontacts.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpcontacts.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain mail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "mail.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain webdisk.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "webdisk.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain webmail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "webmail.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure."
+      }
+    ],
+    "riskScore": null,
+    "summary": null,
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan",
+      "assetDiscovery"
+    ],
+    "error": "Server restarted during scan"
+  },
+  {
+    "id": "3d019e27-01f1-4f9e-9260-4b76fdb5d241",
+    "domain": "worknigeria.com",
+    "status": "complete",
+    "progress": 20,
+    "startedAt": "2026-06-22T19:13:53.018Z",
+    "completedAt": "2026-06-22T19:14:06.034Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "development.worknigeria.com",
+            "staging.worknigeria.com",
+            "www.worknigeria.com",
+            "blog.worknigeria.com",
+            "blogs.worknigeria.com",
+            "3mtt.development.worknigeria.com",
+            "cpanel.worknigeria.com",
+            "cpcalendars.worknigeria.com",
+            "cpcontacts.worknigeria.com",
+            "mail.worknigeria.com",
+            "webdisk.worknigeria.com",
+            "webmail.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.118",
+                "99.86.20.3",
+                "99.86.20.37",
+                "99.86.20.66"
+              ]
+            },
+            {
+              "host": "development.worknigeria.com",
+              "ips": [
+                "13.35.36.86",
+                "13.35.36.44",
+                "13.35.36.73",
+                "13.35.36.78"
+              ]
+            },
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.41",
+                "13.35.238.69",
+                "13.35.238.124",
+                "13.35.238.94"
+              ]
+            },
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.69",
+                "13.35.238.41",
+                "13.35.238.94",
+                "13.35.238.124"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain blogs.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "blogs.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain 3mtt.development.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "3mtt.development.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpanel.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpanel.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpcalendars.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpcalendars.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain cpcontacts.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "cpcontacts.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain mail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "mail.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain webdisk.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "webdisk.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            },
+            {
+              "id": "ASSET-TAKEOVER-001",
+              "severity": "high",
+              "title": "Potential Subdomain Takeover",
+              "description": "Subdomain webmail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+              "module": "assetDiscovery",
+              "affected": "webmail.worknigeria.com",
+              "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+              "owasp": "A05:2021 Security Misconfiguration"
+            }
+          ],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "hosts": [
+            {
+              "host": "worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 169,
+              "issuer": "Amazon",
+              "subject": "worknigeria.com",
+              "validFrom": "May 25 00:00:00 2026 GMT",
+              "validTo": "Dec  8 23:59:59 2026 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "worknigeria.com",
+                "*.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "www.worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 169,
+              "issuer": "Amazon",
+              "subject": "worknigeria.com",
+              "validFrom": "May 25 00:00:00 2026 GMT",
+              "validTo": "Dec  8 23:59:59 2026 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "worknigeria.com",
+                "*.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 216,
+              "issuer": "Amazon",
+              "subject": "development.worknigeria.com",
+              "validFrom": "Dec 26 00:00:00 2025 GMT",
+              "validTo": "Jan 24 23:59:59 2027 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "development.worknigeria.com",
+                "staging.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "development.worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 216,
+              "issuer": "Amazon",
+              "subject": "development.worknigeria.com",
+              "validFrom": "Dec 26 00:00:00 2025 GMT",
+              "validTo": "Jan 24 23:59:59 2027 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "development.worknigeria.com",
+                "staging.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "blogs.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "3mtt.development.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "cpanel.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "cpcalendars.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "cpcontacts.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "mail.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "webdisk.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "webmail.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            },
+            {
+              "host": "blog.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            }
+          ],
+          "summary": {
+            "total": 13,
+            "valid": 4,
+            "expiring": 0,
+            "expired": 0,
+            "noSSL": 9
+          },
+          "findings": []
+        }
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain blogs.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "blogs.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain 3mtt.development.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "3mtt.development.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpanel.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpanel.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpcalendars.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpcalendars.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain cpcontacts.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "cpcontacts.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain mail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "mail.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain webdisk.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "webdisk.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      },
+      {
+        "id": "ASSET-TAKEOVER-001",
+        "severity": "high",
+        "title": "Potential Subdomain Takeover",
+        "description": "Subdomain webmail.worknigeria.com has DNS records but no IP resolution. May be vulnerable to takeover.",
+        "module": "assetDiscovery",
+        "affected": "webmail.worknigeria.com",
+        "remediation": "Remove DNS records for decommissioned services, or point to active infrastructure.",
+        "owasp": "A05:2021 Security Misconfiguration"
+      }
+    ],
+    "riskScore": {
+      "score": 50,
+      "grade": "D",
+      "label": "High Risk",
+      "breakdown": {
+        "critical": 0,
+        "high": 8,
+        "medium": 0,
+        "low": 0,
+        "info": 0
+      },
+      "riskLevel": "high",
+      "color": "#ef4444"
+    },
+    "summary": {
+      "totalAssets": 13,
+      "liveHosts": 0,
+      "openPorts": 0,
+      "exposedServices": 0,
+      "criticalFindings": 0,
+      "highFindings": 8,
+      "mediumFindings": 0,
+      "lowFindings": 0,
+      "technologies": 0,
+      "dnsIssues": 0,
+      "vulnChecks": 0,
+      "vulnPassed": 0,
+      "vulnFailed": 0,
+      "activeProbes": 0,
+      "activeAttackFindings": 0,
+      "xssFound": 0,
+      "sqliFound": 0,
+      "cmdiFound": 0,
+      "detectedPlatforms": [],
+      "cmsFindings": 0,
+      "registrar": null,
+      "daysUntilExpiry": null,
+      "ipCount": 0,
+      "sslScanned": 13,
+      "sslExpired": 0,
+      "sslExpiring": 0,
+      "sslValid": 4,
+      "nessusPlugins": 0,
+      "nessusCritical": 0,
+      "nessusHigh": 0
+    },
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan",
+      "assetDiscovery"
+    ]
+  },
+  {
+    "id": "9e57ae26-387b-43b3-93f4-e06824553cbf",
+    "domain": "worknigeria.com",
+    "status": "complete",
+    "progress": 20,
+    "startedAt": "2026-06-22T19:24:30.283Z",
+    "completedAt": "2026-06-22T19:24:50.525Z",
+    "modules": {
+      "whoisLookup": {
+        "status": "skipped",
+        "data": null
+      },
+      "assetDiscovery": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "subdomains": [
+            "worknigeria.com",
+            "www.worknigeria.com",
+            "staging.worknigeria.com",
+            "blog.worknigeria.com"
+          ],
+          "liveHosts": [],
+          "ipAddresses": [
+            {
+              "host": "www.worknigeria.com",
+              "ips": [
+                "13.35.238.124",
+                "13.35.238.69",
+                "13.35.238.41",
+                "13.35.238.94"
+              ]
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "ips": [
+                "99.86.20.66",
+                "99.86.20.37",
+                "99.86.20.118",
+                "99.86.20.3"
+              ]
+            },
+            {
+              "host": "blog.worknigeria.com",
+              "ips": [
+                "3.85.8.13"
+              ]
+            },
+            {
+              "host": "worknigeria.com",
+              "ips": [
+                "13.35.238.41",
+                "13.35.238.69",
+                "13.35.238.124",
+                "13.35.238.94"
+              ]
+            }
+          ],
+          "cloudProviders": [],
+          "cdnProviders": [],
+          "wafDetected": [],
+          "findings": [],
+          "toolsUsed": [
+            "httpx"
+          ]
+        }
+      },
+      "sslScan": {
+        "status": "complete",
+        "data": {
+          "domain": "worknigeria.com",
+          "hosts": [
+            {
+              "host": "worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 169,
+              "issuer": "Amazon",
+              "subject": "worknigeria.com",
+              "validFrom": "May 25 00:00:00 2026 GMT",
+              "validTo": "Dec  8 23:59:59 2026 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "worknigeria.com",
+                "*.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "www.worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 169,
+              "issuer": "Amazon",
+              "subject": "worknigeria.com",
+              "validFrom": "May 25 00:00:00 2026 GMT",
+              "validTo": "Dec  8 23:59:59 2026 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "worknigeria.com",
+                "*.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "staging.worknigeria.com",
+              "hasSSL": true,
+              "status": "valid",
+              "daysLeft": 216,
+              "issuer": "Amazon",
+              "subject": "development.worknigeria.com",
+              "validFrom": "Dec 26 00:00:00 2025 GMT",
+              "validTo": "Jan 24 23:59:59 2027 GMT",
+              "protocol": "TLSv1.3",
+              "san": [
+                "development.worknigeria.com",
+                "staging.worknigeria.com"
+              ],
+              "selfSigned": false,
+              "error": null
+            },
+            {
+              "host": "blog.worknigeria.com",
+              "hasSSL": false,
+              "status": "no_ssl",
+              "daysLeft": null,
+              "issuer": null,
+              "subject": null,
+              "validFrom": null,
+              "validTo": null,
+              "protocol": null,
+              "san": [],
+              "error": "No SSL / connection refused"
+            }
+          ],
+          "summary": {
+            "total": 4,
+            "valid": 3,
+            "expiring": 0,
+            "expired": 0,
+            "noSSL": 1
+          },
+          "findings": []
+        }
+      },
+      "dnsAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "portScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "serviceFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "webTechFingerprint": {
+        "status": "skipped",
+        "data": null
+      },
+      "wafDetector": {
+        "status": "skipped",
+        "data": null
+      },
+      "vulnAssessment": {
+        "status": "skipped",
+        "data": null
+      },
+      "nucleiChecks": {
+        "status": "skipped",
+        "data": null
+      },
+      "jsSecretScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "subdomainTakeover": {
+        "status": "skipped",
+        "data": null
+      },
+      "wapitiscan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cmsVulnScan": {
+        "status": "skipped",
+        "data": null
+      },
+      "cveEnrichment": {
+        "status": "skipped",
+        "data": null
+      },
+      "retireJsChecker": {
+        "status": "skipped",
+        "data": null
+      },
+      "apiDiscovery": {
+        "status": "skipped",
+        "data": null
+      },
+      "nessusScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "cookieSecurityScanner": {
+        "status": "skipped",
+        "data": null
+      },
+      "sriScanner": {
+        "status": "skipped",
+        "data": null
+      }
+    },
+    "findings": [],
+    "riskScore": {
+      "score": 5,
+      "grade": "A+",
+      "label": "Excellent",
+      "breakdown": {},
+      "color": "#22c55e"
+    },
+    "summary": {
+      "totalAssets": 4,
+      "liveHosts": 0,
+      "openPorts": 0,
+      "exposedServices": 0,
+      "criticalFindings": 0,
+      "highFindings": 0,
+      "mediumFindings": 0,
+      "lowFindings": 0,
+      "technologies": 0,
+      "dnsIssues": 0,
+      "vulnChecks": 0,
+      "vulnPassed": 0,
+      "vulnFailed": 0,
+      "activeProbes": 0,
+      "activeAttackFindings": 0,
+      "xssFound": 0,
+      "sqliFound": 0,
+      "cmdiFound": 0,
+      "detectedPlatforms": [],
+      "cmsFindings": 0,
+      "registrar": null,
+      "daysUntilExpiry": null,
+      "ipCount": 0,
+      "sslScanned": 4,
+      "sslExpired": 0,
+      "sslExpiring": 0,
+      "sslValid": 3,
+      "nessusPlugins": 0,
+      "nessusCritical": 0,
+      "nessusHigh": 0
+    },
+    "scanMode": "full",
+    "selectedModules": [
+      "sslScan",
+      "assetDiscovery"
+    ]
   }
 ]
