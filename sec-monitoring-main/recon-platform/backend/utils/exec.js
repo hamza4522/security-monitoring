@@ -1,6 +1,30 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/**
+ * Execute a command with arguments safely (no shell interpolation — prevents injection)
+ * @param {string} binary
+ * @param {string[]} args
+ * @param {number} timeoutMs
+ * @returns {Promise<string>}
+ */
+async function execFileCommand(binary, args = [], timeoutMs = 30000) {
+  try {
+    const { stdout } = await execFileAsync(binary, args, {
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return stdout;
+  } catch (err) {
+    if (err.killed || err.signal === 'SIGTERM') {
+      throw new Error(`Command timed out after ${timeoutMs}ms: ${binary}`);
+    }
+    if (err.stdout) return err.stdout;
+    throw new Error(err.stderr || err.message);
+  }
+}
 
 /**
  * Execute a shell command with timeout
@@ -45,4 +69,4 @@ async function isToolAvailable(tool) {
   }
 }
 
-module.exports = { execCommand, isToolAvailable };
+module.exports = { execCommand, execFileCommand, isToolAvailable };

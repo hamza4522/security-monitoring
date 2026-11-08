@@ -212,18 +212,31 @@ async function testZoneTransfer(domain, nameservers) {
 
 function generateDNSFindings(results) {
   const findings = [];
+  const hasMailServers = results.records.mx && results.records.mx.length > 0;
 
-  // SPF findings
+  // SPF findings — only report as high severity if domain actually accepts/sends email
   if (!results.spf.present) {
-    findings.push({
-      id: 'DNS-001',
-      severity: 'high',
-      title: 'Missing SPF Record',
-      description: `No SPF record found for ${results.domain}. This allows anyone to send email on behalf of this domain.`,
-      module: 'dnsAssessment',
-      remediation: 'Add a TXT record: v=spf1 include:_spf.yourmailprovider.com ~all',
-      cvss: 7.5,
-    });
+    if (hasMailServers) {
+      findings.push({
+        id: 'DNS-001',
+        severity: 'high',
+        title: 'Missing SPF Record',
+        description: `No SPF record found for ${results.domain}. Since MX records exist, this allows anyone to send spoofed email on behalf of this domain.`,
+        module: 'dnsAssessment',
+        remediation: 'Add a TXT record: v=spf1 include:_spf.yourmailprovider.com ~all',
+        cvss: 7.5,
+      });
+    } else {
+      findings.push({
+        id: 'DNS-001-INFO',
+        severity: 'info',
+        title: 'No SPF Record (No MX Records Found)',
+        description: `No SPF record found for ${results.domain}. However, no MX records were detected either, so email spoofing risk is lower. Best practice is to publish "v=spf1 -all" to block all sending.`,
+        module: 'dnsAssessment',
+        remediation: 'If this domain will never send email, publish: v=spf1 -all',
+        cvss: 0,
+      });
+    }
   } else if (results.spf.issues.length > 0) {
     results.spf.issues.forEach((issue, i) => {
       findings.push({
@@ -237,17 +250,29 @@ function generateDNSFindings(results) {
     });
   }
 
-  // DMARC findings
+  // DMARC findings — only report as high if MX records exist
   if (!results.dmarc.present) {
-    findings.push({
-      id: 'DNS-002',
-      severity: 'high',
-      title: 'Missing DMARC Record',
-      description: 'No DMARC record found. Email spoofing cannot be detected or blocked.',
-      module: 'dnsAssessment',
-      remediation: 'Add: _dmarc.yourdomain.com TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com"',
-      cvss: 7.5,
-    });
+    if (hasMailServers) {
+      findings.push({
+        id: 'DNS-002',
+        severity: 'high',
+        title: 'Missing DMARC Record',
+        description: 'No DMARC record found on an active email domain. Email spoofing cannot be detected or blocked by receivers.',
+        module: 'dnsAssessment',
+        remediation: 'Add: _dmarc.yourdomain.com TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com"',
+        cvss: 7.5,
+      });
+    } else {
+      findings.push({
+        id: 'DNS-002-INFO',
+        severity: 'info',
+        title: 'No DMARC Record (No MX Records Found)',
+        description: 'No DMARC record found. Since no MX records exist, consider publishing "v=DMARC1; p=reject" to protect your domain brand from phishing.',
+        module: 'dnsAssessment',
+        remediation: 'Publish: _dmarc.yourdomain.com TXT "v=DMARC1; p=reject"',
+        cvss: 0,
+      });
+    }
   } else if (results.dmarc.policy === 'none') {
     findings.push({
       id: 'DNS-003',
@@ -259,13 +284,13 @@ function generateDNSFindings(results) {
     });
   }
 
-  // DKIM findings
-  if (!results.dkim.configured) {
+  // DKIM findings — only report if domain handles email
+  if (!results.dkim.configured && hasMailServers) {
     findings.push({
       id: 'DNS-004',
       severity: 'medium',
       title: 'No DKIM Records Found',
-      description: 'No DKIM signing records detected for common selectors.',
+      description: 'No DKIM signing records detected for common selectors on an active email domain.',
       module: 'dnsAssessment',
       remediation: 'Configure DKIM signing in your email provider and publish the public key as a TXT record.',
     });

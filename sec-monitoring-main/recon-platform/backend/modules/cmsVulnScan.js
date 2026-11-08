@@ -81,15 +81,15 @@ const PLATFORM_CHECKS = {
       desc: 'XML-RPC is enabled and can be abused for brute-force attacks and DDoS amplification.',
       fix: 'Disable XML-RPC via plugin (Disable XML-RPC) or add to .htaccess: deny from all for /xmlrpc.php.' },
     { path: '/wp-content/debug.log', name: 'Debug Log Exposed', sev: 'high',
-      detect: (r) => r.ok && r.status === 200 && r.text.length > 50,
-      desc: 'WordPress debug log is publicly accessible. May contain sensitive data and stack traces.',
+      detect: (r) => r.ok && r.status === 200 && /\[\d{2}-\w{3}-\d{4}|\bPHP (?:Fatal|Notice|Warning)|Stack trace/i.test(r.text),
+      desc: 'WordPress debug log is publicly accessible. Contains sensitive PHP errors and stack traces.',
       fix: 'Move debug log out of web root or restrict access in .htaccess.' },
     { path: '/wp-config.php.bak', name: 'WordPress Config Backup', sev: 'critical',
-      detect: (r) => r.ok && r.status === 200,
+      detect: (r) => r.ok && r.status === 200 && /DB_NAME|DB_USER|DB_PASSWORD|<\?php/i.test(r.text),
       desc: 'WordPress configuration backup is publicly accessible. May expose DB credentials.',
       fix: 'Delete backup files from the web root immediately.' },
     { path: '/.wp-config.php.swp', name: 'WordPress Config Swap File', sev: 'critical',
-      detect: (r) => r.ok && r.status === 200,
+      detect: (r) => r.ok && r.status === 200 && (/b0VIM/i.test(r.text) || /wp-config/i.test(r.text)),
       desc: 'Editor swap file for wp-config.php is publicly accessible.',
       fix: 'Delete .swp and similar editor temp files from the server.' },
     { path: '/wp-login.php', name: 'Login Page Accessible', sev: 'low',
@@ -127,7 +127,7 @@ const PLATFORM_CHECKS = {
       desc: 'Joomla administrator panel is publicly accessible.',
       fix: 'Restrict /administrator to trusted IP addresses.' },
     { path: '/configuration.php.bak', name: 'Joomla Config Backup', sev: 'critical',
-      detect: (r) => r.ok && r.status === 200,
+      detect: (r) => r.ok && r.status === 200 && /JConfig|class JConfig|\$password/i.test(r.text),
       desc: 'Joomla configuration backup file is publicly accessible. May expose DB credentials.',
       fix: 'Delete all backup config files from the web root.' },
     { path: '/README.txt', name: 'Joomla Version Disclosure', sev: 'medium',
@@ -228,6 +228,18 @@ async function runCMSVulnScan(domain, onProgress) {
 
   if (!baseUrl) { onProgress('Target unreachable — skipping CMS scan'); return results; }
 
+  // ── Baseline Soft-404 Detection ─────────────────────────────────────────────
+  let hasSoft404 = false;
+  let soft404BodyLen = 0;
+  try {
+    const randPath = '/cms-nxpath-' + Math.random().toString(36).slice(2);
+    const rNx = await safeFetch(baseUrl + randPath);
+    if (rNx.ok && rNx.status === 200) {
+      hasSoft404 = true;
+      soft404BodyLen = (rNx.text || '').length;
+    }
+  } catch (_) {}
+
   // ── Detect CMS ──────────────────────────────────────────────────────────────
   onProgress('Identifying CMS and frameworks...');
   const detected = detectCMS(homeHtml, homeHeaders);
@@ -248,7 +260,15 @@ async function runCMSVulnScan(domain, onProgress) {
     for (const check of checks) {
       results.summary.checksRun++;
       const r = await safeFetch(baseUrl + check.path);
-      const vulnerable = check.detect(r);
+      
+      // Filter out soft-404 matches
+      let vulnerable = check.detect(r);
+      if (vulnerable && hasSoft404 && r.status === 200) {
+        const diff = Math.abs((r.text || '').length - soft404BodyLen);
+        if (diff < Math.max(soft404BodyLen * 0.15, 80)) {
+          vulnerable = false; // Soft-404 false positive
+        }
+      }
 
       results.checks.push({
         platform: platform.name,
@@ -263,6 +283,7 @@ async function runCMSVulnScan(domain, onProgress) {
         results.findings.push({
           id: `CMS-${platform.name.toUpperCase().replace(/\s/g,'-')}-${check.name.replace(/\s+/g,'-').toUpperCase()}`,
           severity: check.sev,
+          confidence: check.sev === 'critical' ? 'confirmed' : 'likely',
           title: `[${platform.name}] ${check.name}`,
           description: check.desc,
           module: 'cmsVulnScan',

@@ -1,4 +1,4 @@
-const { execCommand, isToolAvailable } = require('../utils/exec');
+const { execCommand, execFileCommand, isToolAvailable } = require('../utils/exec');
 
 /**
  * Module 1: Asset Discovery & Attack Surface Mapping
@@ -22,7 +22,7 @@ async function runAssetDiscovery(domain, onProgress) {
   if (await isToolAvailable('subfinder')) {
     results.toolsUsed.push('subfinder');
     try {
-      const output = await execCommand(`subfinder -d ${domain} -silent -timeout 30`, 60000);
+      const output = await execFileCommand('subfinder', ['-d', domain, '-silent', '-timeout', '30'], 60000);
       const subs = output.split('\n').map(s => s.trim()).filter(Boolean);
       results.subdomains = [...new Set([domain, ...subs])];
       onProgress(`Found ${results.subdomains.length} subdomains`);
@@ -94,25 +94,25 @@ async function runAssetDiscovery(domain, onProgress) {
   results.findings.push(...takeoverFindings);
 
   // --- Generate Findings ---
-  if (results.subdomains.length > 50) {
+  if (results.subdomains.length > 100) {
     results.findings.push({
       id: 'ASSET-001',
       severity: 'info',
       title: 'Large Attack Surface',
-      description: `${results.subdomains.length} subdomains discovered, indicating a large attack surface.`,
+      description: `${results.subdomains.length} subdomains discovered. A large surface area increases the likelihood of a misconfigured or forgotten asset.`,
       module: 'assetDiscovery',
-      remediation: 'Audit and decommission unused subdomains. Implement subdomain inventory tracking.',
+      remediation: 'Maintain a live subdomain inventory. Decommission unused subdomains and implement a subdomain lifecycle policy.',
     });
   }
 
   if (results.wafDetected.length === 0 && results.liveHosts.length > 0) {
     results.findings.push({
       id: 'ASSET-002',
-      severity: 'medium',
-      title: 'No WAF Detected',
-      description: 'No Web Application Firewall was detected on any live hosts.',
+      severity: 'info',
+      title: 'No WAF Detected on Live Hosts',
+      description: 'No Web Application Firewall signatures were detected on any live hosts. This is informational — many secure sites use origin-level controls without a dedicated WAF.',
       module: 'assetDiscovery',
-      remediation: 'Consider deploying a WAF (Cloudflare, AWS WAF, Akamai) to protect web applications.',
+      remediation: 'Consider deploying a WAF (Cloudflare, AWS WAF, Akamai) for additional protection, particularly for public-facing applications.',
     });
   }
 

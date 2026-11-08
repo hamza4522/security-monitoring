@@ -361,6 +361,7 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
         results.findings.push({
           id:          `CVE-ENRICH-${cveId}`,
           severity,
+          confidence:  version ? 'confirmed' : 'possible',
           title:       `${cveId} — ${keyword.charAt(0).toUpperCase() + keyword.slice(1)}${versionTag} (CVSS ${scoreInfo.score})`,
           description: `[NVD] ${desc.slice(0, 300)}${desc.length > 300 ? '...' : ''}`,
           module:      'cveEnrichment',

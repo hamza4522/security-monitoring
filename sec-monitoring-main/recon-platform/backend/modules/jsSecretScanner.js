@@ -16,8 +16,8 @@
 const UA = 'Mozilla/5.0 (compatible; SecurityScanner/2.0)';
 const MAX_JS_FILES   = 20;   // max JS files to scan
 const MAX_JS_SIZE    = 500_000; // bytes — skip huge bundles beyond this
-const ENTROPY_THRESH = 4.5;  // Shannon entropy threshold for high-entropy strings
-const HE_MIN_LEN     = 20;   // minimum string length for entropy check
+const ENTROPY_THRESH = 4.8;  // Shannon entropy threshold for high-entropy strings (raised from 4.5 to avoid minified var names)
+const HE_MIN_LEN     = 24;   // minimum string length for entropy check (raised from 20)
 const HE_MAX_LEN     = 80;   // maximum string length for entropy check
 
 // ── Secret Patterns ───────────────────────────────────────────────────────────
@@ -260,7 +260,8 @@ function findHighEntropyStrings(source) {
     seen.add(s);
     // Skip obvious false positives
     if (/^[A-Za-z]+$/.test(s)) continue;        // all letters = probably a word
-    if (s.includes('/')) continue;               // file paths, URLs, base64 with slashes
+    if (s.includes('://')) continue;             // full URLs
+    if (s.startsWith('/') || s.startsWith('./')) continue; // file/dir paths
     if (s.includes('http') || s.includes('www') || s.includes('cdn')) continue;
     if (/^[0-9a-f]+$/i.test(s) && s.length < 32) continue; // short hex = likely a color or ID
     if (s.length < HE_MIN_LEN || s.length > HE_MAX_LEN) continue;
@@ -331,6 +332,8 @@ function scanForSecrets(source, fileUrl) {
     'password', 'secret', 'example', 'placeholder', 'xxxxxxxx', '********',
     'your-password', 'your_password', 'supersecret', 'mysecret', 'test',
     'abc123', '12345678', 'passw0rd', 'p@ssw0rd', 'enter_key_here',
+    'example.com', 'localhost', '0.0.0.0', '127.0.0.1', 'bearer', 'undefined',
+    'null', 'false', 'true', 'none', 'token', 'default', 'dummy', 'sample'
   ]);
 
   for (const pattern of SECRET_PATTERNS) {

@@ -1,5 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
+const dns = require('dns').promises;
 const { runWhoisLookup }       = require('../modules/whoisLookup');
 const { runAssetDiscovery }    = require('../modules/assetDiscovery');
 const { runDNSAssessment }     = require('../modules/dnsAssessment');
@@ -21,6 +22,56 @@ const { runNessusScanner }           = require('../modules/nessusScanner');
 const { runCookieSecurityScanner }   = require('../modules/cookieSecurityScanner');
 const { runSRIScanner }              = require('../modules/sriScanner');
 const { calculateRiskScore }         = require('../utils/riskScoring');
+
+// ── SSRF Protection ───────────────────────────────────────────────────────────
+// Blocks scans against RFC-1918, loopback, link-local, and cloud metadata ranges.
+const PRIVATE_IP_RANGES = [
+  /^0\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^127\./,
+  /^169\.254\./,
+  /^::1$/,
+  /^0:0:0:0:0:0:0:1$/,
+  /^fc00:/i,
+  /^fe80:/i,
+];
+
+async function isPrivateTarget(domain) {
+  if (domain === 'localhost' || domain === '0.0.0.0') return true;
+  if (PRIVATE_IP_RANGES.some(r => r.test(domain))) return true;
+
+  try {
+    // dns.lookup uses getaddrinfo and resolves localhost/hosts entries
+    const { address } = await dns.lookup(domain);
+    if (PRIVATE_IP_RANGES.some(r => r.test(address))) return true;
+  } catch (_) {}
+
+  try {
+    const ips = await dns.resolve4(domain);
+    return ips.some(ip => PRIVATE_IP_RANGES.some(r => r.test(ip)));
+  } catch (_) {
+    return false;
+  }
+}
+
+// ── Simple in-memory rate limiter for /start ──────────────────────────────────
+// Max 10 scan starts per IP per 60 seconds.
+const _rateLimitMap = new Map(); // ip → { count, resetAt }
+const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let entry = _rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    _rateLimitMap.set(ip, entry);
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
 
 module.exports = (scans, broadcast, alertEngine = null) => {
   const router = express.Router();
@@ -76,6 +127,18 @@ module.exports = (scans, broadcast, alertEngine = null) => {
     for (const key of ALL_MODULE_KEYS) {
       const isSelected = runAll || finalSelectedModules.includes(key);
       moduleState[key] = { status: isSelected ? 'pending' : 'skipped', data: null };
+    }
+
+    // ── SSRF Protection ───────────────────────────────────────────────────────
+    // Reject scans that resolve to private/loopback/link-local IPs.
+    if (await isPrivateTarget(domain_)) {
+      return res.status(400).json({ error: 'Target resolves to a private or reserved IP address. External targets only.' });
+    }
+
+    // ── Rate Limiting ─────────────────────────────────────────────────────────
+    const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+    if (!checkRateLimit(clientIP)) {
+      return res.status(429).json({ error: 'Too many scan requests. Please wait before starting a new scan.' });
     }
 
     const scanId = uuidv4();
@@ -411,59 +474,21 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   }
 }
 
-function mergeResults(resultsList, mainDomain) {
-  if (!resultsList || resultsList.length === 0) return null;
-  const merged = JSON.parse(JSON.stringify(resultsList[0]));
-  merged.domain = mainDomain;
-
-  for (let i = 1; i < resultsList.length; i++) {
-    const current = resultsList[i];
-    for (const key of Object.keys(current)) {
-      if (key === 'domain') continue;
-
-      if (Array.isArray(current[key])) {
-        merged[key] = (merged[key] || []).concat(current[key]);
-      } else if (typeof current[key] === 'object' && current[key] !== null) {
-        if (!merged[key]) merged[key] = {};
-        for (const subKey of Object.keys(current[key])) {
-          if (typeof current[key][subKey] === 'number') {
-            merged[key][subKey] = (merged[key][subKey] || 0) + current[key][subKey];
-          } else if (Array.isArray(current[key][subKey])) {
-            merged[key][subKey] = (merged[key][subKey] || []).concat(current[key][subKey]);
-          } else if (merged[key][subKey] === undefined) {
-            merged[key][subKey] = current[key][subKey];
-          }
-        }
-      } else if (typeof current[key] === 'number') {
-        merged[key] = (merged[key] || 0) + current[key];
-      }
-    }
-  }
-
-  // Deduplicate findings
-  if (merged.findings && Array.isArray(merged.findings)) {
-    const seen = new Set();
-    merged.findings = merged.findings.filter(f => {
-      const key = `${f.id}-${f.affected || f.title}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  return merged;
-}
-
 async function runConcurrent(tasks, limit) {
   const results = [];
   const executing = [];
   for (const task of tasks) {
-    const p = task().then(r => {
-      executing.splice(executing.indexOf(p), 1);
-      return r;
-    });
+    const p = task();
     executing.push(p);
     results.push(p);
+    // Attach cleanup after pushing so indexOf is always correct even if resolved synchronously
+    p.then(() => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    }).catch(() => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    });
     if (executing.length >= limit) {
       await Promise.race(executing);
     }

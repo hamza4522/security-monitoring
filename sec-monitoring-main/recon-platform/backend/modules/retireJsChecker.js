@@ -217,6 +217,7 @@ async function scanPageScripts(baseUrl, html, db, onProgress, results) {
         results.findings.push({
           id:          findingId,
           severity:    vuln.severity,
+          confidence:  'confirmed',
           title:       `Vulnerable JS Library: ${libName} v${version}${cveStr}`,
           description: `${libName} version ${version} is loaded at ${scriptUrl} and contains known security vulnerabilities. ${vuln.summary}`,
           module:      'retireJsChecker',

@@ -362,25 +362,43 @@ async function runSubdomainTakeover(domain, onProgress, subdomains = []) {
         status: probe.status,
       });
 
-      // Match fingerprints or NXDOMAIN
+      // ── Confirmed takeover: CNAME match + body fingerprint ─────────────────
+      // We require BOTH conditions to avoid false positives:
+      //   1. CNAME chain points to a known vulnerable service
+      //   2. The HTTP response body contains the service-specific "unclaimed" fingerprint
+      //
+      // NXDOMAIN alone is NOT sufficient — it may be a temporary DNS issue,
+      // a CDN edge node outage, or a recently decommissioned service with TTL.
       const matched = matchTakeoverDB(cnameChain, probe);
 
-      if (matched || targetNXDOMAIN) {
-        const service = matched?.service || 'Unknown Service';
+      if (matched) {
+        const service = matched.service;
         results.vulnerable.push({ subdomain, cnameChain, service });
         results.summary.vulnerable++;
 
         results.findings.push({
           id:          `TAKEOVER-${subdomain.replace(/\./g, '-').toUpperCase()}`,
-          severity:    matched?.severity || 'high',
-          title:       `Subdomain Takeover Possible: ${subdomain} → ${service}`,
-          description: matched
-            ? `${matched.description}\nCNAME chain: ${cnameChain.join(' → ')}`
-            : `Subdomain ${subdomain} has a CNAME pointing to ${cnameTarget} which returned NXDOMAIN (no IP). This dangling DNS entry is potentially vulnerable to takeover.`,
+          severity:    matched.severity,
+          confidence:  'confirmed',
+          title:       `Subdomain Takeover Confirmed: ${subdomain} → ${service}`,
+          description: `${matched.description}\n\nCNAME chain: ${cnameChain.join(' → ')}\nHTTP status: ${probe.status}\nUnclaimed fingerprint matched in response body.`,
           module:      'subdomainTakeover',
           affected:    subdomain,
-          remediation: matched?.fix || 'Remove the CNAME record for this subdomain immediately.',
-          details: { cnameChain, cnameTarget, targetNXDOMAIN, httpStatus: probe.status },
+          remediation: matched.fix,
+          details:     { cnameChain, cnameTarget, targetNXDOMAIN, httpStatus: probe.status },
+        });
+      } else if (targetNXDOMAIN && probe.status === 0) {
+        // NXDOMAIN + no HTTP response = dangling DNS, reported at lower confidence
+        results.findings.push({
+          id:          `TAKEOVER-DANGLING-${subdomain.replace(/\./g, '-').toUpperCase()}`,
+          severity:    'medium',
+          confidence:  'possible',
+          title:       `Dangling DNS Record: ${subdomain}`,
+          description: `Subdomain "${subdomain}" has a CNAME chain (${cnameChain.join(' → ')}) but the final target returned NXDOMAIN and the host is unreachable. Manual verification is required to confirm takeover potential.`,
+          module:      'subdomainTakeover',
+          affected:    subdomain,
+          remediation: 'Review the CNAME chain. If the target service is decommissioned, remove the DNS record immediately.',
+          details:     { cnameChain, cnameTarget, targetNXDOMAIN, httpStatus: probe.status },
         });
       }
     } catch (_) {}

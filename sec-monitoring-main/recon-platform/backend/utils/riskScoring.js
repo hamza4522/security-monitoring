@@ -58,13 +58,25 @@ function calculateRiskScore(scan) {
     info:     findings.filter(f => f.severity === 'info').length,
   };
 
+  // Calculate weighted score incorporating finding confidence
+  let weightedScore = 0;
+  for (const f of findings) {
+    const baseWeight = SEVERITY_WEIGHTS[f.severity] || 0;
+    // Downweight 'possible' confidence by 60%, 'likely' by 15%, 'confirmed' at 100%
+    const confMultiplier = f.confidence === 'possible' ? 0.4 : f.confidence === 'likely' ? 0.85 : 1.0;
+    weightedScore += baseWeight * confMultiplier;
+  }
+
   let rawScore = 0;
   rawScore += Math.min(breakdown.critical * SEVERITY_WEIGHTS.critical, 60);
   rawScore += Math.min(breakdown.high     * SEVERITY_WEIGHTS.high,     40);
   rawScore += Math.min(breakdown.medium   * SEVERITY_WEIGHTS.medium,   25);
   rawScore += Math.min(breakdown.low      * SEVERITY_WEIGHTS.low,      10);
 
-  // Wapiti active findings boost score significantly
+  // Blend weighted score with breakdown score to account for confidence
+  rawScore = (rawScore * 0.5) + (Math.min(weightedScore, 100) * 0.5);
+
+  // Wapiti active findings boost score significantly (only confirmed findings)
   const wapiti = scan.modules?.wapitiscan?.data?.summary || {};
   if (wapiti.sqli  > 0) rawScore += 20; // SQL injection is very serious
   if (wapiti.cmdi  > 0) rawScore += 25; // RCE potential
@@ -75,13 +87,18 @@ function calculateRiskScore(scan) {
   // Bonus for dangerous combinations
   if (breakdown.critical > 0 && breakdown.high > 2) rawScore += 10;
   if (scan.modules?.portScan?.data?.exposedDangerousPorts?.length > 3) rawScore += 10;
-  if (!scan.modules?.dnsAssessment?.data?.spf?.present)   rawScore += 5;
-  if (!scan.modules?.dnsAssessment?.data?.dmarc?.present) rawScore += 5;
 
-  // Log4Shell / Spring4Shell specific (very critical)
-  const hasLog4j = findings.some(f => f.id?.includes('CVE-2021-44228'));
-  const hasSpring4 = findings.some(f => f.id?.includes('CVE-2022-22963'));
-  if (hasLog4j || hasSpring4) rawScore = Math.max(rawScore, 90);
+  // Only penalize missing SPF/DMARC if domain actually handles email (has MX records)
+  const hasMx = (scan.modules?.dnsAssessment?.data?.records?.mx || []).length > 0;
+  if (hasMx && !scan.modules?.dnsAssessment?.data?.spf?.present)   rawScore += 5;
+  if (hasMx && !scan.modules?.dnsAssessment?.data?.dmarc?.present) rawScore += 5;
+
+  // Confirmed critical RCEs (Log4Shell / Spring4Shell)
+  const hasConfirmedRCE = findings.some(f =>
+    (f.id?.includes('CVE-2021-44228') || f.id?.includes('CVE-2022-22963') || f.id?.includes('CVE-2022-22965')) &&
+    f.confidence === 'confirmed'
+  );
+  if (hasConfirmedRCE) rawScore = Math.max(rawScore, 90);
 
   // Expired SSL certs on multiple hosts — serious customer impact
   const sslSummary = scan.modules?.sslScan?.data?.summary || {};

@@ -237,11 +237,23 @@ async function detectCMSPaths(baseUrl) {
     try {
       const url = baseUrl + path;
       const res = await fetch(url, {
-        method: 'HEAD',
+        method: 'GET',
         signal: AbortSignal.timeout(5000),
         redirect: 'manual',
       });
-      if (res.status < 400 || res.status === 403) {
+      // 403/401 means access is blocked/protected, not an unauthenticated exposure
+      if (['Security Risk', 'Database Admin'].includes(category)) {
+        if (res.status === 200) {
+          const body = await res.text().catch(() => '');
+          // Confirm not a generic redirect/soft-404
+          const isReal = (path === '/.git/' && body.includes('ref:')) ||
+                         (path === '/.env' && /DB_|APP_|AWS_|SECRET/i.test(body)) ||
+                         (path.includes('admin') && /phpMyAdmin|Adminer/i.test(body));
+          if (isReal) {
+            techs.push({ name, category, confidence: 'high', source: 'path_probe', evidence: `${path} → HTTP 200 (confirmed content)`, url });
+          }
+        }
+      } else if (res.status === 200) {
         techs.push({ name, category, confidence: 'high', source: 'path_probe', evidence: `${path} → HTTP ${res.status}`, url });
       }
     } catch (_) {}
@@ -254,9 +266,12 @@ async function detectCMSPaths(baseUrl) {
 function generateWebTechFindings(results, headers) {
   const findings = [];
   results.technologies.filter(t => ['Security Risk', 'Database Admin', 'Info Disclosure'].includes(t.category)).forEach(tech => {
-    const severity = ['Security Risk', 'Database Admin'].includes(tech.category) ? 'critical' : 'medium';
+    // Only flag true exposures as critical
+    const severity = ['Security Risk', 'Database Admin'].includes(tech.category) ? 'critical' : 'info';
     findings.push({
-      id: `WEB-${tech.name.replace(/\s+/g, '-').toUpperCase()}`, severity,
+      id: `WEB-${tech.name.replace(/\s+/g, '-').toUpperCase()}`,
+      severity,
+      confidence: 'confirmed',
       title: `Exposed: ${tech.name}`,
       description: `${tech.name} was detected at ${tech.url || 'the target'}. ${tech.evidence || ''}`,
       module: 'webTechFingerprint', affected: tech.url,
@@ -266,8 +281,11 @@ function generateWebTechFindings(results, headers) {
 
   if (results.cms?.name === 'WordPress') {
     findings.push({
-      id: 'WEB-WP-001', severity: 'medium', title: 'WordPress CMS Detected',
-      description: 'WordPress detected. Ensure it is up to date and hardened.',
+      id: 'WEB-WP-001',
+      severity: 'info',
+      confidence: 'confirmed',
+      title: 'WordPress CMS Detected',
+      description: 'WordPress was detected. Ensure all plugins and themes are regularly updated and hardened.',
       module: 'webTechFingerprint',
       remediation: 'Disable XML-RPC if not needed, restrict wp-admin by IP, install a security plugin.',
     });
