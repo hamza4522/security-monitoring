@@ -80,6 +80,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-EXPIRED-${host}`,
           severity:    'critical',
+          confidence:  'confirmed',
           title:       `SSL Certificate EXPIRED: ${host}`,
           description: `The SSL certificate for ${host} expired ${Math.abs(daysLeft)} day(s) ago (on ${new Date(info.validTo).toLocaleDateString()}). Browsers will show a security warning and block access.`,
           module:      'sslScan',
@@ -91,6 +92,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-EXPIRING-${host}`,
           severity:    daysLeft <= 7 ? 'high' : 'medium',
+          confidence:  'confirmed',
           title:       `SSL Certificate Expiring Soon: ${host} (${daysLeft} days)`,
           description: `The SSL certificate for ${host} will expire in ${daysLeft} day(s) on ${new Date(info.validTo).toLocaleDateString()}. Failure to renew will cause browsers to display security warnings.`,
           module:      'sslScan',
@@ -106,6 +108,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-SELFSIGNED-${host}`,
           severity:    'high',
+          confidence:  'confirmed',
           title:       `Self-Signed SSL Certificate: ${host}`,
           description: `The certificate for ${host} is self-signed (issuer = subject). Browsers display "not trusted" warnings to visitors, which erodes user trust and can indicate a misconfiguration.`,
           module:      'sslScan',
@@ -119,6 +122,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-WEAKPROTO-${host}`,
           severity:    'high',
+          confidence:  'confirmed',
           title:       `Weak TLS Protocol Negotiated: ${host} (${info.protocol})`,
           description: `The server negotiated ${info.protocol} which is deprecated and insecure. Attackers can exploit weaknesses in these protocol versions.`,
           module:      'sslScan',

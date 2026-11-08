@@ -529,17 +529,18 @@ async function runWAFDetector(domain, onProgress) {
   }
 
   if (!results.isProtected) {
-    // Check if we detected a CDN without a WAF — lower severity since CDN provides some protection
+    // Check if we detected a CDN without a WAF
     const hasCDN = results.detected.some(d => d.type?.includes('CDN'));
     results.findings.push({
-      id:       'WAF-NOT-DETECTED',
-      severity: hasCDN ? 'medium' : 'high',
-      title:    hasCDN ? 'No WAF Detected (CDN Only)' : 'No WAF / CDN Detected',
+      id:          'WAF-NOT-DETECTED',
+      severity:    hasCDN ? 'low' : 'medium',
+      confidence:  'likely',
+      title:       hasCDN ? 'No WAF Detected (CDN Only)' : 'No WAF / CDN Detected',
       description: hasCDN
         ? 'A CDN is in use but no Web Application Firewall was detected. CDNs provide DDoS protection but may not block web application attacks (XSS, SQLi, etc.).'
-        : 'No Web Application Firewall or CDN was detected in front of this target. The application is directly exposed without a defensive layer for DDoS, bot, and web attack protection.',
-      module:   'wafDetector',
-      remediation: 'Deploy a WAF (Cloudflare, AWS WAF, Sucuri, ModSecurity). This is especially critical for e-commerce, banking, and healthcare apps.',
+        : 'No Web Application Firewall or CDN was detected in front of this target. Consider deploying a defensive layer for DDoS, bot, and web attack protection.',
+      module:      'wafDetector',
+      remediation: 'Deploy a WAF (Cloudflare, AWS WAF, Sucuri, ModSecurity) to add an outer layer of defense against automated web attacks.',
     });
   }
 

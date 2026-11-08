@@ -1,0 +1,26 @@
+{
+  "name": "reconscan-client",
+  "version": "2.0.0",
+  "description": "Official Node.js SDK and CLI for the ReconScan Vulnerability Scanner API",
+  "main": "index.js",
+  "bin": {
+    "reconscan": "./reconscan.js"
+  },
+  "scripts": {
+    "test": "node reconscan.js health"
+  },
+  "keywords": [
+    "reconscan",
+    "vulnerability-scanner",
+    "security",
+    "reconnaissance",
+    "cli",
+    "sdk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
