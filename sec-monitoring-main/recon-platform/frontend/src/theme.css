@@ -1,60 +1,68 @@
 /* 
   ========================================================
-  THEME COLORS & VARIABLES
+  THEME COLORS & VARIABLES — Datadog-Style Dark Theme
   ========================================================
-  Manage all the colors for the application here.
-  Change the hex codes below to update the app's aesthetic.
+  Inspired by Datadog's signature design language:
+  · Deep charcoal/slate backgrounds
+  · Violet/purple as the primary accent (Datadog purple)
+  · Clean, flat cards with crisp borders
+  · Warm orange for warnings (Datadog orange)
+  · Bright green for success
+  ========================================================
 */
 
 :root {
-  /* Backgrounds */
-  --bg-main: #0a0e17;
-  --bg-card: rgba(15, 23, 42, 0.6);
-  --bg-card-hover: rgba(30, 41, 59, 0.7);
-  
-  /* Borders */
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.12);
-  
-  /* Text */
-  --text-main: #f1f5f9;
-  --text-muted: #94a3b8;
-  
-  /* Accent Colors (Used for buttons, glowing effects, and status indicators) */
-  --accent-blue: #3b82f6;
-  --accent-blue-glow: rgba(59, 130, 246, 0.4);
-  --accent-purple: #8b5cf6;
-  --accent-pink: #d946ef;
-  
-  /* Status Colors */
-  --accent-green: #10b981; /* Success / Low Risk */
-  --accent-orange: #f59e0b; /* Warning / High Risk */
-  --accent-red: #ef4444; /* Error / Critical Risk */
-  
-  /* Effects */
-  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.2);
-  --glass-blur: blur(12px);
+  /* ── Backgrounds ─────────────────────────────────── */
+  --bg-main:        #0f1014;          /* Datadog deep background */
+  --bg-card:        rgba(22, 23, 30, 0.92);  /* Card surface */
+  --bg-card-hover:  rgba(30, 32, 42, 0.97);  /* Card hover */
 
-  /* Legacy variable for backwards compatibility with any existing components */
-  --card-bg: var(--bg-card); 
+  /* ── Borders ─────────────────────────────────────── */
+  --border-color:   rgba(255, 255, 255, 0.07);
+  --border-light:   rgba(255, 255, 255, 0.11);
+
+  /* ── Text ────────────────────────────────────────── */
+  --text-main:      #f0f2f8;          /* Datadog primary text */
+  --text-muted:     #8a8fa8;          /* Datadog muted / secondary */
+
+  /* ── Primary Accent: Datadog Purple ─────────────── */
+  --accent-blue:       #7b4fff;       /* Datadog signature purple */
+  --accent-blue-glow:  rgba(123, 79, 255, 0.35);
+
+  /* ── Secondary Accents ───────────────────────────── */
+  --accent-purple: #a06dff;           /* Lighter purple for badges */
+  --accent-pink:   #f462a1;           /* Datadog hot pink */
+
+  /* ── Status / Severity Colors ────────────────────── */
+  --accent-green:  #2dc771;           /* Datadog success green */
+  --accent-orange: #ff6b2b;           /* Datadog warning orange */
+  --accent-red:    #f23b4d;           /* Datadog critical red */
+  --accent-teal:   #00b9c5;           /* Datadog teal/info */
+
+  /* ── Effects ─────────────────────────────────────── */
+  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.35);
+  --glass-blur:   blur(14px);
+
+  /* ── Legacy compatibility ─────────────────────────── */
+  --card-bg: var(--bg-card);
 }
 
-/* Light Theme Overrides */
+/* ── Light Theme Overrides ───────────────────────────── */
 [data-theme="light"] {
-  --bg-main: #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-main:       #f4f5fa;           /* Datadog light bg */
+  --bg-card:       rgba(255, 255, 255, 0.95);
   --bg-card-hover: rgba(255, 255, 255, 1);
-  
-  --border-color: rgba(15, 23, 42, 0.08);
-  --border-light: rgba(15, 23, 42, 0.15);
-  
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  
-  --accent-blue: #2563eb;
-  --accent-blue-glow: rgba(37, 99, 235, 0.3);
-  --accent-purple: #7c3aed;
-  --accent-pink: #d946ef;
-  
-  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.05);
+
+  --border-color:  rgba(15, 16, 20, 0.08);
+  --border-light:  rgba(15, 16, 20, 0.14);
+
+  --text-main:     #1a1b26;           /* Datadog dark text */
+  --text-muted:    #6b7190;
+
+  --accent-blue:       #6534ff;       /* Darker purple for light mode */
+  --accent-blue-glow:  rgba(101, 52, 255, 0.25);
+  --accent-purple: #8c5cf5;
+  --accent-pink:   #e0387a;
+
+  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.06);
 }

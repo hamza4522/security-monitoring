@@ -43,7 +43,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Jenkins CI Server',
-    paths: ['/jenkins', '/jenkins/', '/'],
+    paths: ['/jenkins', '/jenkins/'],
     fingerprints: [/jenkins.*version|<title>.*jenkins/i],
     severity: 'critical',
     desc: 'Jenkins dashboard is publicly accessible. Unauthenticated Jenkins installations allow script console RCE.',
@@ -61,7 +61,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Grafana Dashboard',
-    paths: ['/grafana', '/grafana/', '/'],
+    paths: ['/grafana', '/grafana/'],
     fingerprints: [/<title>.*grafana|grafana labs/i],
     severity: 'high',
     desc: 'Grafana dashboard is publicly accessible. Default admin/admin credentials allow full takeover.',
@@ -97,7 +97,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'RabbitMQ Management',
-    paths: ['/rabbitmq', '/'],
+    paths: ['/rabbitmq', '/#rabbitmq'],
     fingerprints: [/rabbitmq management|rabbitmq.*login/i],
     severity: 'critical',
     desc: 'RabbitMQ Management UI is publicly accessible. Default guest/guest credentials may allow queue control.',
@@ -115,7 +115,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Portainer (Docker UI)',
-    paths: ['/portainer', '/#/init/admin', '/'],
+    paths: ['/portainer', '/#/init/admin'],
     fingerprints: [/portainer|docker container management/i],
     severity: 'critical',
     desc: 'Portainer Docker management UI is publicly accessible. Provides full Docker host control including container creation.',
@@ -205,7 +205,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Netdata Monitoring',
-    paths: ['/netdata', '/'],
+    paths: ['/netdata', '/netdata/'],
     fingerprints: [/netdata|<title>netdata/i],
     severity: 'high',
     desc: 'Netdata real-time monitoring dashboard is publicly accessible. Leaks system metrics and infrastructure details.',
@@ -214,7 +214,7 @@ const PANEL_TEMPLATES = [
   },
   {
     name: 'Webmin Admin',
-    paths: ['/webmin', '/'],
+    paths: ['/webmin', '/webmin/'],
     fingerprints: [/webmin|<title>webmin/i],
     severity: 'critical',
     desc: 'Webmin web-based system administration interface is publicly accessible.',
@@ -295,9 +295,11 @@ const CVE_PROBES = [
     severity: 'critical',
     probe: async (baseUrl) => {
       const r = await safeFetch(`${baseUrl}/?class.module.classLoader.URLs%5B0%5D=0`, { timeout: 6000 });
-      return r.status === 400 && r.body.includes('Bad Request');
+      // Require specific Spring Framework error indicating classLoader binding attempt
+      return (r.status === 400 || r.status === 500) &&
+        (r.body.includes('org.springframework') || r.body.includes('Failed to convert property value') || (r.headers['x-application-context'] && r.body.includes('classLoader')));
     },
-    desc: 'Spring4Shell (CVE-2022-22965) probe: server responded to class.module.classLoader parameter. May indicate vulnerable Spring MVC endpoint.',
+    desc: 'Spring4Shell (CVE-2022-22965) probe: server responded with Spring-specific error to class.module.classLoader parameter.',
     fix: 'Upgrade Spring Framework to 5.3.18+ or 5.2.20+. Set spring.mvc.pathmatch.use-suffix-pattern=false.',
   },
   {
@@ -358,9 +360,11 @@ const CVE_PROBES = [
     severity: 'critical',
     probe: async (baseUrl) => {
       const r = await safeFetch(`${baseUrl}/%24%7B%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29%7D/`, { timeout: 6000 });
-      return r.status !== 404 && (r.body.includes('confluence') || r.status === 400);
+      // Must be confirmed Confluence instance and reflect executed command or specific OGNL error
+      return (r.body.includes('atlassian-confluence') || r.body.includes('confluence-context-path')) &&
+             (/uid=\d+|www-data/i.test(r.body) || (r.headers['x-confluence-request-time'] && r.status === 302));
     },
-    desc: 'Confluence OGNL injection endpoint (CVE-2022-26134) responded to encoded payload — potentially vulnerable.',
+    desc: 'Confluence OGNL injection endpoint (CVE-2022-26134) confirmed on Atlassian Confluence instance.',
     fix: 'Upgrade Confluence to 7.18.1+ or 7.4.17+. Apply Atlassian security advisory 2022-06-02.',
   },
   {
@@ -409,16 +413,18 @@ const CVE_PROBES = [
     name: 'Log4Shell JNDI Injection Probe',
     severity: 'critical',
     probe: async (baseUrl) => {
-      // We check for the vulnerable indicator (accepting JNDI strings) by looking at server headers
-      // A real Log4Shell test requires a callback server; here we detect Log4j in header signals
       const r = await safeFetch(baseUrl, {
         headers: { 'User-Agent': '${${lower:j}ndi:${lower:l}dap://log4shell-test.local/a}' },
         timeout: 6000,
       });
-      // Look for signs the payload was processed vs reflected untouched
-      return r.status === 500 || (r.headers['x-powered-by'] || '').toLowerCase().includes('log4j');
+      // Do NOT flag purely on HTTP 500 — require actual Log4j/JNDI error signature
+      return r.status === 500 && (
+        r.body.includes('org.apache.logging.log4j') ||
+        r.body.includes('javax.naming.NamingException') ||
+        r.body.includes('Error looking up JNDI resource')
+      );
     },
-    desc: 'Log4Shell JNDI probe sent in User-Agent. Server returned HTTP 500 which may indicate JNDI lookup was attempted. Confirm with DNS callback testing.',
+    desc: 'Log4Shell JNDI probe triggered Log4j exception in response. Confirm with DNS callback testing.',
     fix: 'Upgrade Log4j to 2.17.1+. Set -Dlog4j2.formatMsgNoLookups=true. Use WAF rule to block ${jndi patterns.',
   },
   {
@@ -604,18 +610,28 @@ async function checkAPISecurity(baseUrl, onProgress, results) {
     const apiPaths = ['/api/login', '/api/v1/login', '/api/auth/login', '/login'];
     for (const ap of apiPaths) {
       const r1 = await safeFetch(`${baseUrl}${ap}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"u":"x","p":"x"}', timeout: 4000 });
-      if (r1.status !== 404) {
+      // A non-404 is not enough: many sites return a 200 catch-all page for any
+      // path. Only treat this as a real auth endpoint when the response actually
+      // behaves like one — a JSON API response or an auth-related error status
+      // with auth keywords in the body — otherwise it's a soft-404 false positive.
+      const ctype = (r1.headers['content-type'] || '').toLowerCase();
+      const body  = (r1.body || '').toLowerCase();
+      const looksLikeAuthEndpoint =
+        [400, 401, 403, 422].includes(r1.status) ||
+        (r1.status === 200 && (ctype.includes('json') ||
+          /invalid (credentials|password|username)|unauthori[sz]ed|login failed|"token"|"access_token"/.test(body)));
+      if (looksLikeAuthEndpoint) {
         const rateLimitHeaders = ['x-ratelimit-limit', 'x-ratelimit-remaining', 'retry-after', 'x-rate-limit'];
         const hasRateLimit = rateLimitHeaders.some(h => r1.headers[h]);
         if (!hasRateLimit) {
           results.findings.push({
             id: `NUCLEI-RATELIMIT-${ap.replace(/\//g, '-')}`,
-            severity: 'medium',
-            title: `No Rate Limiting on: ${ap}`,
-            description: `The ${ap} endpoint does not return rate-limiting headers. Without rate limiting, brute-force and credential stuffing attacks are unrestricted.`,
+            severity: 'low',
+            title: `No Rate-Limit Headers on: ${ap}`,
+            description: `The ${ap} endpoint responds like an authentication endpoint but returns no rate-limiting headers. This is a weak signal — the endpoint may still be rate-limited upstream (e.g. by a WAF/CDN) — but it is worth verifying that brute-force and credential-stuffing protection is in place.`,
             module: 'nucleiChecks',
             affected: baseUrl + ap,
-            remediation: 'Implement rate limiting (e.g., 5 req/min per IP). Return X-RateLimit-Limit headers. Use CAPTCHA on repeated failures.',
+            remediation: 'Verify rate limiting on authentication endpoints (e.g., 5 req/min per IP). Optionally expose X-RateLimit-* headers. Use CAPTCHA/lockout on repeated failures.',
           });
         }
         break;
@@ -649,6 +665,18 @@ async function runNucleiChecks(domain, onProgress) {
   }
   if (!baseUrl) { onProgress('Target unreachable — skipping Nuclei checks'); return results; }
 
+  // ── Baseline Soft-404 Check ──────────────────────────────────────────────
+  let soft404BodyLen = 0;
+  let hasSoft404 = false;
+  try {
+    const randPath = '/nuclei-nxpath-' + Math.random().toString(36).slice(2);
+    const rNx = await safeFetch(baseUrl + randPath, { timeout: 5000 });
+    if (rNx.status === 200) {
+      hasSoft404 = true;
+      soft404BodyLen = (rNx.body || '').length;
+    }
+  } catch (_) {}
+
   // ── 1. Exposed Panel Detection ───────────────────────────────────────────
   onProgress(`Checking ${PANEL_TEMPLATES.length} management panels...`);
   const panelChecks = PANEL_TEMPLATES.map(async (panel) => {
@@ -656,16 +684,37 @@ async function runNucleiChecks(domain, onProgress) {
       try {
         const r = await safeFetch(baseUrl + path, { timeout: 6000 });
         if (r.status === 0 || r.status === 404) continue;
-        // Fingerprint match
+
+        // If soft-404 site, verify body differs significantly from default soft-404 page
+        if (hasSoft404 && r.status === 200) {
+          const diff = Math.abs((r.body || '').length - soft404BodyLen);
+          if (diff < Math.max(soft404BodyLen * 0.15, 100)) continue;
+        }
+
+        // Fingerprint match — must match body or headers
         const matches = panel.fingerprints.some(fp => fp.test(r.body) || fp.test(JSON.stringify(r.headers)));
-        if (matches || (r.status === 200 && r.body.length > 500 && path !== '/')) {
-          results.panelsFound.push({ name: panel.name, path, status: r.status });
+        if (matches) {
+          const isProtected = (r.status === 401 || r.status === 403);
+          const isRedirect = (r.status >= 300 && r.status < 400);
+
+          if (isRedirect) continue; // Skip redirects
+
+          const severity = isProtected ? 'low' : panel.severity;
+          const title = isProtected
+            ? `Protected Management Panel Detected: ${panel.name} (HTTP ${r.status})`
+            : `Exposed Management Panel: ${panel.name}`;
+          const confidence = isProtected ? 'likely' : 'confirmed';
+
+          results.panelsFound.push({ name: panel.name, path, status: r.status, protected: isProtected });
           results.summary.panelsFound++;
           results.findings.push({
             id: `NUCLEI-PANEL-${panel.name.replace(/\s+/g, '-').toUpperCase()}`,
-            severity: panel.severity,
-            title: `Exposed Management Panel: ${panel.name}`,
-            description: panel.desc + (panel.cve ? ` Related CVE: ${panel.cve}.` : ''),
+            severity,
+            confidence,
+            title,
+            description: isProtected
+              ? `${panel.name} detected at ${path}, but requires authentication (HTTP ${r.status}). Ensure it is not accessible from untrusted networks.`
+              : (panel.desc + (panel.cve ? ` Related CVE: ${panel.cve}.` : '')),
             module: 'nucleiChecks',
             affected: baseUrl + path,
             remediation: panel.fix,

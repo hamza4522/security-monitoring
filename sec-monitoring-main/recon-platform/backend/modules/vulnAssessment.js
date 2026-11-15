@@ -66,29 +66,63 @@ async function runVulnAssessment(domain, onProgress) {
   }
   if (!baseUrl) { onProgress('Target unreachable'); return results; }
 
-  // ── Soft-404 detection ───────────────────────────────────────────────────
+  // ── Improved Soft-404 detection ──────────────────────────────────────────
+  // Use two random non-existent paths; compare body lengths to homepage.
+  // A site is soft-404 if it returns HTTP 200 for non-existent paths.
   let hasSoft404 = false;
+  let soft404BodyLen = 0;
   try {
-    const sc = await safeFetch(baseUrl + '/vuln-scan-nonexistent-' + Math.random().toString(36).slice(2));
-    if (sc.status === 200) hasSoft404 = true;
+    const rand1 = '/vuln-scan-nxpath-' + Math.random().toString(36).slice(2);
+    const rand2 = '/vuln-scan-nxpath-' + Math.random().toString(36).slice(2);
+    const [sc1, sc2] = await Promise.all([
+      safeFetch(baseUrl + rand1, { timeout: 6000 }),
+      safeFetch(baseUrl + rand2, { timeout: 6000 }),
+    ]);
+    if (sc1.status === 200 || sc2.status === 200) {
+      hasSoft404 = true;
+      // Store avg body length of fake 404 pages to detect real content
+      soft404BodyLen = Math.round(
+        ((sc1.body || '').length + (sc2.body || '').length) / 2
+      );
+    }
   } catch (_) {}
 
-  // Helper: probe a path, verify content if soft-404 or verify keyword provided
+  /**
+   * probe(path, verifyStr?)
+   * Returns true only when a real resource is found (not a soft-404).
+   *
+   * Rules:
+   *  - HTTP 200 required.
+   *  - If the site has soft-404: body must differ meaningfully from the
+   *    soft-404 body length AND must contain the verifyStr keyword.
+   *  - If no soft-404: verifyStr must be present when provided.
+   */
   async function probe(path, verifyStr = null) {
-    const r = await safeFetch(baseUrl + path, { timeout: 5000, noBody: !verifyStr && !hasSoft404 });
+    const r = await safeFetch(baseUrl + path, { timeout: 5000 });
     if (r.status !== 200) return false;
-    if (hasSoft404 || verifyStr) {
-      const body = r.body || (await safeFetch(baseUrl + path, { timeout: 5000 })).body;
-      if (verifyStr && !body.toLowerCase().includes(verifyStr.toLowerCase())) return false;
+
+    const body = r.body || '';
+
+    if (hasSoft404) {
+      // On a soft-404 site we REQUIRE a keyword to confirm real content
+      if (!verifyStr) return false;
+      // Body must differ from typical soft-404 body by at least 15%
+      const diff = Math.abs(body.length - soft404BodyLen);
+      const threshold = Math.max(soft404BodyLen * 0.15, 100);
+      if (diff < threshold) return false;
+      return body.toLowerCase().includes(verifyStr.toLowerCase());
     }
+
+    // No soft-404: simple keyword check
+    if (verifyStr) return body.toLowerCase().includes(verifyStr.toLowerCase());
     return true;
   }
 
   // ── 1. Security Headers ──────────────────────────────────────────────────
   onProgress('Checking HTTP security headers...');
   const secHeaders = [
-    { name: 'Strict-Transport-Security', sev: 'high',   desc: 'HSTS not set — browsers can downgrade to HTTP', fix: 'Add: Strict-Transport-Security: max-age=63072000; includeSubDomains; preload' },
-    { name: 'Content-Security-Policy',   sev: 'high',   desc: 'No CSP — XSS/data injection unmitigated', fix: "Add: Content-Security-Policy: default-src 'self'" },
+    { name: 'Strict-Transport-Security', sev: 'medium', desc: 'HSTS not set — browsers can downgrade to HTTP', fix: 'Add: Strict-Transport-Security: max-age=63072000; includeSubDomains; preload' },
+    { name: 'Content-Security-Policy',   sev: 'medium', desc: 'No CSP — XSS/data injection unmitigated', fix: "Add: Content-Security-Policy: default-src 'self'" },
     { name: 'X-Frame-Options',           sev: 'medium', desc: 'Clickjacking protection missing', fix: 'Add: X-Frame-Options: DENY' },
     { name: 'X-Content-Type-Options',    sev: 'medium', desc: 'MIME-sniffing not prevented', fix: 'Add: X-Content-Type-Options: nosniff' },
     { name: 'Referrer-Policy',           sev: 'low',    desc: 'Referrer policy not set', fix: 'Add: Referrer-Policy: strict-origin-when-cross-origin' },
@@ -168,7 +202,9 @@ async function runVulnAssessment(domain, onProgress) {
   for (const method of ['PUT', 'DELETE', 'TRACE', 'PATCH', 'CONNECT']) {
     try {
       const r = await fetch(baseUrl, { method, signal: AbortSignal.timeout(5000) });
-      const allowed = r.status !== 405 && r.status !== 501 && r.status !== 403;
+      // Only flag as "allowed" on a genuine success response (200/204).
+      // 302, 401, 403, 405, 501 all mean the method is effectively blocked.
+      const allowed = (r.status === 200 || r.status === 204);
       results.checks.push({ category: 'HTTP Methods', name: method, status: allowed ? 'warn' : 'pass', value: `HTTP ${r.status}` });
       if (allowed) results.findings.push({ id: `VULN-METHOD-${method}`, severity: method === 'TRACE' ? 'high' : 'medium', title: `Dangerous HTTP Method Allowed: ${method}`, description: `${method} returned ${r.status}. This may expose CSRF/XST attack surface.`, module: 'vulnAssessment', remediation: `Disable the ${method} method on the web server if not required.` });
     } catch (_) {}
@@ -262,13 +298,13 @@ async function runVulnAssessment(domain, onProgress) {
     { path: '/server-info',              name: 'Apache Server Info',                   sev: 'high',     verify: 'Apache Server Information' },
     { path: '/server-status',            name: 'Apache Server Status',                 sev: 'high',     verify: 'Apache Status' },
     // ── Admin panels ──────────────────────────────────────────────────────
-    { path: '/admin',                    name: 'Admin Panel (/admin)',                  sev: 'high',     verify: null },
-    { path: '/admin/',                   name: 'Admin Panel (/admin/)',                 sev: 'high',     verify: null },
-    { path: '/admin.php',               name: 'Admin Panel (admin.php)',                sev: 'high',     verify: null },
-    { path: '/administrator',           name: 'Administrator Panel',                   sev: 'high',     verify: null },
-    { path: '/backend',                 name: 'Backend Panel',                         sev: 'high',     verify: null },
-    { path: '/manage',                  name: 'Management Panel',                      sev: 'high',     verify: null },
-    { path: '/management',             name: 'Management Panel (/management)',          sev: 'high',     verify: null },
+    { path: '/admin',                    name: 'Admin Panel (/admin)',                  sev: 'high',     verify: 'login' },
+    { path: '/admin/',                   name: 'Admin Panel (/admin/)',                 sev: 'high',     verify: 'login' },
+    { path: '/admin.php',               name: 'Admin Panel (admin.php)',                sev: 'high',     verify: 'login' },
+    { path: '/administrator',           name: 'Administrator Panel',                   sev: 'high',     verify: 'administrator' },
+    { path: '/backend',                 name: 'Backend Panel',                         sev: 'high',     verify: 'login' },
+    { path: '/manage',                  name: 'Management Panel',                      sev: 'high',     verify: 'manage' },
+    { path: '/management',             name: 'Management Panel (/management)',          sev: 'high',     verify: 'management' },
     { path: '/phpmyadmin',             name: 'phpMyAdmin',                             sev: 'critical', verify: 'phpMyAdmin' },
     { path: '/pma',                    name: 'phpMyAdmin (/pma)',                      sev: 'critical', verify: 'phpMyAdmin' },
     { path: '/myadmin',                name: 'phpMyAdmin (/myadmin)',                  sev: 'critical', verify: 'phpMyAdmin' },
@@ -355,17 +391,22 @@ async function runVulnAssessment(domain, onProgress) {
       backupChecks.push((async () => {
         const path = `/${t}${ext}`;
         const r = await safeFetch(baseUrl + path, { timeout: 4000 });
-        if (r.status === 200 && r.body.length > 100) {
-          results.checks.push({ category: 'Backup Files', name: `${t}${ext}`, status: 'fail', value: `${path} → 200 OK` });
-          results.findings.push({
-            id: `VULN-BACKUP-${path.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
-            severity: t.includes('config') || t.includes('wp-config') ? 'critical' : 'high',
-            title: `Backup File Exposed: ${t}${ext}`,
-            description: `Editor/backup copy ${path} is publicly accessible. It may contain source code or credentials in plaintext.`,
-            module: 'vulnAssessment', affected: baseUrl + path,
-            remediation: `Delete backup files from the web root: rm ${path}. Add *.bak, *.old to .gitignore and web server deny rules.`,
-          });
+        if (r.status !== 200 || !r.body || r.body.length < 100) return;
+        // Apply soft-404 detection: skip if body length is within 15% of soft-404 length
+        if (hasSoft404) {
+          const diff = Math.abs(r.body.length - soft404BodyLen);
+          const threshold = Math.max(soft404BodyLen * 0.15, 100);
+          if (diff < threshold) return; // Looks like soft-404, not a real file
         }
+        results.checks.push({ category: 'Backup Files', name: `${t}${ext}`, status: 'fail', value: `${path} → 200 OK` });
+        results.findings.push({
+          id: `VULN-BACKUP-${path.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
+          severity: t.includes('config') || t.includes('wp-config') ? 'critical' : 'high',
+          title: `Backup File Exposed: ${t}${ext}`,
+          description: `Editor/backup copy ${path} is publicly accessible. It may contain source code or credentials in plaintext.`,
+          module: 'vulnAssessment', affected: baseUrl + path,
+          remediation: `Delete backup files from the web root: rm ${path}. Add *.bak, *.old to .gitignore and web server deny rules.`,
+        });
       })());
     }
   }
@@ -394,11 +435,12 @@ async function runVulnAssessment(domain, onProgress) {
           module: 'vulnAssessment',
           remediation: 'Remove sensitive paths from robots.txt. Use authentication instead of obscurity.',
         });
-        // Probe top disallowed paths
+        // Probe top disallowed paths — use the probe() helper for soft-404 awareness
         const probeThese = disallowed.slice(0, 8);
         await Promise.allSettled(probeThese.map(async (p) => {
-          const pr = await safeFetch(baseUrl + p, { timeout: 4000 });
-          if (pr.status === 200) {
+          // Use probe() which already handles soft-404 detection
+          const isReal = await probe(p, null);
+          if (isReal) {
             results.findings.push({
               id: `VULN-ROBOTS-ACCESS-${p.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase()}`,
               severity: 'medium',
@@ -631,54 +673,58 @@ async function runVulnAssessment(domain, onProgress) {
     }
   } catch (_) { results.checks.push({ category: 'SSL/TLS', name: 'Certificate', status: 'info', value: 'Could not retrieve' }); }
 
-  // ── 16. CVE Header Matching (35+ patterns) ────────────────────────────────
-  onProgress('Matching detected software against known CVEs...');
+  // ── 16. CVE Header Matching (version-specific patterns) ──────────────────
+  // NOTE: Patterns are intentionally version-specific to avoid false positives.
+  // Generic product names (Spring, Jira, etc.) WITHOUT version strings are
+  // reported as 'warn' (version disclosure) not 'fail' (confirmed CVE).
+  onProgress('Matching detected software version against known CVEs...');
   const combined = `${serverHeader} ${poweredBy}`;
   const cveDB = [
-    { pattern: /Apache\/2\.4\.49/i,        cve: 'CVE-2021-41773', sev: 'critical', title: 'Apache Path Traversal / RCE',          fix: 'Upgrade Apache to 2.4.51+' },
-    { pattern: /Apache\/2\.4\.50/i,        cve: 'CVE-2021-42013', sev: 'critical', title: 'Apache Path Traversal (Incomplete Fix)', fix: 'Upgrade Apache to 2.4.51+' },
-    { pattern: /nginx\/1\.([0-9]|1[0-7])\./i, cve: 'CVE-2021-23017', sev: 'high', title: 'Nginx DNS Resolver Vulnerability',      fix: 'Upgrade Nginx to 1.21.0+' },
-    { pattern: /Microsoft-IIS\/([6-8])\./i, cve: 'CVE-2017-7269', sev: 'critical', title: 'IIS WebDAV Buffer Overflow',           fix: 'Upgrade IIS and disable WebDAV' },
-    { pattern: /PHP\/[5-7]\.[0-3]/i,       cve: 'CVE-2019-11043', sev: 'critical', title: 'PHP-FPM Remote Code Execution',        fix: 'Upgrade PHP to latest stable version' },
-    { pattern: /PHP\/8\.0\./i,             cve: 'CVE-2023-3247',  sev: 'medium',   title: 'PHP 8.0 Information Disclosure',       fix: 'Upgrade to PHP 8.1+' },
-    { pattern: /JBoss/i,                   cve: 'CVE-2017-12149', sev: 'critical', title: 'JBoss Deserialization RCE',            fix: 'Apply RedHat security patches' },
-    { pattern: /Tomcat\/([4-9]|10)\./i,    cve: 'CVE-2020-1938',  sev: 'critical', title: 'Tomcat Ghostcat (AJP)',                fix: 'Disable AJP connector or upgrade Tomcat' },
-    { pattern: /WebLogic/i,                cve: 'CVE-2020-14882', sev: 'critical', title: 'Oracle WebLogic RCE',                  fix: 'Apply Oracle October 2020 CPU patches' },
-    { pattern: /ColdFusion/i,              cve: 'CVE-2023-26360', sev: 'critical', title: 'Adobe ColdFusion RCE',                 fix: 'Apply Adobe security updates' },
-    { pattern: /log4j/i,                   cve: 'CVE-2021-44228', sev: 'critical', title: 'Log4Shell (Log4j RCE)',                fix: 'Upgrade log4j to 2.17.1+' },
-    { pattern: /Spring/i,                  cve: 'CVE-2022-22963', sev: 'critical', title: 'Spring4Shell RCE',                    fix: 'Upgrade Spring Cloud Function' },
-    { pattern: /Struts/i,                  cve: 'CVE-2017-5638',  sev: 'critical', title: 'Apache Struts 2 RCE',                 fix: 'Upgrade Apache Struts' },
-    { pattern: /Confluence/i,              cve: 'CVE-2022-26134', sev: 'critical', title: 'Confluence OGNL RCE',                 fix: 'Apply Atlassian security patches' },
-    { pattern: /Jira/i,                    cve: 'CVE-2019-11581', sev: 'critical', title: 'Jira Template Injection',             fix: 'Upgrade Jira Software' },
-    { pattern: /Bitbucket/i,               cve: 'CVE-2022-36804', sev: 'critical', title: 'Bitbucket Command Injection',         fix: 'Apply Atlassian security patches' },
-    { pattern: /GitLab/i,                  cve: 'CVE-2021-22205', sev: 'critical', title: 'GitLab ExifTool RCE',                 fix: 'Upgrade GitLab' },
-    { pattern: /Jenkins/i,                 cve: 'CVE-2024-23897', sev: 'critical', title: 'Jenkins CLI LFI/RCE',                 fix: 'Upgrade Jenkins and disable CLI' },
-    { pattern: /Grafana\/8\.[0-3]/i,       cve: 'CVE-2021-43798', sev: 'critical', title: 'Grafana LFI',                         fix: 'Upgrade Grafana to 8.3.1+' },
-    { pattern: /BIG-IP/i,                  cve: 'CVE-2022-1388',  sev: 'critical', title: 'F5 BIG-IP iControl RCE',             fix: 'Apply F5 security patches' },
-    { pattern: /Pulse Secure/i,            cve: 'CVE-2019-11510', sev: 'critical', title: 'Pulse Secure LFI',                   fix: 'Apply Ivanti security patches' },
-    { pattern: /GlobalProtect/i,           cve: 'CVE-2019-1579',  sev: 'critical', title: 'Palo Alto GlobalProtect RCE',        fix: 'Apply Palo Alto security patches' },
-    { pattern: /Fortinet/i,                cve: 'CVE-2023-27997', sev: 'critical', title: 'FortiOS Heap Overflow RCE',          fix: 'Apply Fortinet security patches' },
-    { pattern: /Citrix/i,                  cve: 'CVE-2023-3519',  sev: 'critical', title: 'Citrix NetScaler RCE',               fix: 'Apply Citrix security patches' },
-    { pattern: /vBulletin/i,               cve: 'CVE-2019-16759', sev: 'critical', title: 'vBulletin RCE',                      fix: 'Apply vBulletin security patches' },
-    { pattern: /Drupal/i,                  cve: 'CVE-2018-7600',  sev: 'critical', title: 'Drupalgeddon 2 RCE',                 fix: 'Upgrade Drupal' },
-    { pattern: /Magento/i,                 cve: 'CVE-2022-24086', sev: 'critical', title: 'Magento Improper Input Validation',  fix: 'Apply Adobe Commerce patches' },
-    { pattern: /Ghost/i,                   cve: 'CVE-2021-29484', sev: 'high',     title: 'Ghost CMS XSS',                     fix: 'Upgrade Ghost' },
-    { pattern: /Webmin\/1\.920/i,          cve: 'CVE-2019-15107', sev: 'critical', title: 'Webmin RCE',                        fix: 'Upgrade Webmin' },
-    { pattern: /Liferay/i,                 cve: 'CVE-2020-7961',  sev: 'critical', title: 'Liferay Portal RCE',                fix: 'Apply Liferay patches' },
-    { pattern: /Cisco/i,                   cve: 'CVE-2020-3452',  sev: 'high',     title: 'Cisco ASA LFI',                     fix: 'Apply Cisco patches' },
-    { pattern: /Splunk/i,                  cve: 'CVE-2023-46214', sev: 'critical', title: 'Splunk Enterprise RCE',              fix: 'Upgrade Splunk' },
-    { pattern: /openresty\/1\.1[0-5]/i,   cve: 'CVE-2019-9511',  sev: 'high',     title: 'OpenResty HTTP/2 DoS',              fix: 'Upgrade OpenResty' },
-    { pattern: /Zimbra/i,                  cve: 'CVE-2022-37042', sev: 'critical', title: 'Zimbra Auth Bypass RCE',            fix: 'Upgrade Zimbra to latest patch' },
-    { pattern: /VMware/i,                  cve: 'CVE-2022-22954', sev: 'critical', title: 'VMware Workspace ONE SSTI RCE',      fix: 'Apply VMware security advisory VMSA-2022-0011' },
+    // ── Web servers (version-specific) ──────────────────────────────────────
+    { pattern: /Apache\/(2\.4\.49)[^\d]/i,    cve: 'CVE-2021-41773', sev: 'critical', title: 'Apache 2.4.49 Path Traversal / RCE',    fix: 'Upgrade Apache to 2.4.51+' },
+    { pattern: /Apache\/(2\.4\.50)[^\d]/i,    cve: 'CVE-2021-42013', sev: 'critical', title: 'Apache 2.4.50 Path Traversal',          fix: 'Upgrade Apache to 2.4.51+' },
+    { pattern: /nginx\/(1\.(?:[0-9]|1[0-9]|20))\.\d/i, cve: 'CVE-2021-23017', sev: 'high', title: 'Nginx DNS Resolver Vulnerability', fix: 'Upgrade Nginx to 1.21.0+' },
+    { pattern: /Microsoft-IIS\/([6-8])\.\d/i, cve: 'CVE-2017-7269',  sev: 'critical', title: 'IIS WebDAV Buffer Overflow (IIS 6–8)',  fix: 'Upgrade IIS and disable WebDAV' },
+    // ── PHP (version-specific) ───────────────────────────────────────────────
+    { pattern: /PHP\/(5\.[0-9]|7\.[0-3])\./i, cve: 'CVE-2019-11043', sev: 'critical', title: 'PHP <7.4 PHP-FPM RCE',                  fix: 'Upgrade PHP to 8.1+' },
+    { pattern: /PHP\/8\.0\.\d/i,              cve: 'CVE-2023-3247',  sev: 'medium',   title: 'PHP 8.0 Information Disclosure',       fix: 'Upgrade to PHP 8.1+' },
+    // ── App servers / middleware (version-specific) ──────────────────────────
+    { pattern: /JBoss(?:\/|\s)(?:AS\s)?[4-7]\./i, cve: 'CVE-2017-12149', sev: 'critical', title: 'JBoss Deserialization RCE',        fix: 'Apply RedHat security patches' },
+    { pattern: /Apache Tomcat\/((?:[4-9]|10)\.[0-9.]+)/i, cve: 'CVE-2020-1938', sev: 'critical', title: 'Tomcat Ghostcat AJP Connector', fix: 'Disable AJP connector or upgrade Tomcat' },
+    { pattern: /WebLogic\/(10|12|14)\./i,     cve: 'CVE-2020-14882', sev: 'critical', title: 'Oracle WebLogic RCE',                   fix: 'Apply Oracle October 2020 CPU patches' },
+    { pattern: /ColdFusion\/(2018|2021)\./i,  cve: 'CVE-2023-26360', sev: 'critical', title: 'Adobe ColdFusion 2018/2021 RCE',        fix: 'Apply Adobe security updates' },
+    // ── Frameworks / CMS (version-specific or rare product names) ───────────
+    { pattern: /Webmin\/1\.92[0-9]/i,         cve: 'CVE-2019-15107', sev: 'critical', title: 'Webmin 1.920 RCE',                     fix: 'Upgrade Webmin to 1.930+' },
+    { pattern: /Grafana\/8\.[0-3]\./i,         cve: 'CVE-2021-43798', sev: 'critical', title: 'Grafana <8.3.1 Path Traversal LFI',    fix: 'Upgrade Grafana to 8.3.1+' },
+    { pattern: /openresty\/1\.1[0-5]\./i,      cve: 'CVE-2019-9511',  sev: 'high',     title: 'OpenResty HTTP/2 DoS',               fix: 'Upgrade OpenResty' },
+    // ── Specific high-confidence product strings ─────────────────────────────
+    { pattern: /BIG-IP/i,                      cve: 'CVE-2022-1388',  sev: 'high',     title: 'F5 BIG-IP iControl REST Auth Bypass', fix: 'Apply F5 security patches' },
+    { pattern: /Pulse(?:\s|-)Secure/i,         cve: 'CVE-2019-11510', sev: 'critical', title: 'Pulse Secure VPN LFI',                fix: 'Apply Ivanti security patches' },
+    { pattern: /GlobalProtect/i,               cve: 'CVE-2019-1579',  sev: 'critical', title: 'Palo Alto GlobalProtect RCE',         fix: 'Apply Palo Alto security patches' },
+    { pattern: /FortiOS|FortiGate/i,           cve: 'CVE-2023-27997', sev: 'critical', title: 'FortiOS Heap Overflow RCE',           fix: 'Apply Fortinet security patches' },
+    { pattern: /Citrix (?:ADC|Gateway|NetScaler)/i, cve: 'CVE-2023-3519', sev: 'critical', title: 'Citrix NetScaler ADC/Gateway RCE', fix: 'Apply Citrix security patches' },
+    { pattern: /vBulletin\/(5\.[0-4])/i,       cve: 'CVE-2019-16759', sev: 'critical', title: 'vBulletin RCE',                       fix: 'Apply vBulletin security patches' },
+    { pattern: /Splunk(?:\/| )Enterprise/i,    cve: 'CVE-2023-46214', sev: 'critical', title: 'Splunk Enterprise RCE',               fix: 'Upgrade Splunk' },
+    { pattern: /Zimbra\/(8\.[0-9]|9\.[0-9])/i, cve: 'CVE-2022-37042', sev: 'critical', title: 'Zimbra Auth Bypass RCE',            fix: 'Upgrade Zimbra to latest patch' },
+    { pattern: /VMware Workspace ONE/i,         cve: 'CVE-2022-22954', sev: 'critical', title: 'VMware Workspace ONE SSTI RCE',       fix: 'Apply VMware VMSA-2022-0011' },
   ];
+  let cveMatched = false;
   for (const entry of cveDB) {
     if (entry.pattern.test(combined)) {
+      cveMatched = true;
       results.checks.push({ category: 'Known CVEs', name: entry.cve, status: 'fail', value: entry.title });
-      results.findings.push({ id: `VULN-CVE-${entry.cve}`, severity: entry.sev, title: `${entry.cve}: ${entry.title}`, description: `Detected potentially vulnerable software in response headers: "${combined.trim()}"`, module: 'vulnAssessment', remediation: entry.fix });
+      results.findings.push({
+        id:          `VULN-CVE-${entry.cve}`,
+        severity:    entry.sev,
+        title:       `${entry.cve}: ${entry.title}`,
+        description: `Detected potentially vulnerable software version in HTTP response headers: "${combined.trim()}". This matches a known CVE pattern — confirm with exploit verification.`,
+        module:      'vulnAssessment',
+        remediation: entry.fix,
+      });
     }
   }
-  if (!results.checks.some(c => c.category === 'Known CVEs'))
-    results.checks.push({ category: 'Known CVEs', name: 'Version Check', status: 'pass', value: 'No known vulnerable versions detected in headers' });
+  if (!cveMatched)
+    results.checks.push({ category: 'Known CVEs', name: 'Version Check', status: 'pass', value: 'No version-specific CVE patterns matched in response headers' });
 
   // ── 17. CSRF Detection ───────────────────────────────────────────────────
   onProgress('Checking for CSRF protection...');

@@ -50,12 +50,88 @@ async function runPortScan(domain, onProgress) {
     await basicPortScan(targetIP, results, onProgress);
   }
 
-  // --- Analyze for dangerous exposures ---
+  // --- Analyze for dangerous exposures and verify auth status ---
+  onProgress('Checking authentication status on exposed sensitive ports...');
   results.exposedDangerousPorts = identifyDangerousExposures(results.openPorts);
+  
+  for (const exp of results.exposedDangerousPorts) {
+    const authStatus = await verifyServiceAuth(targetIP, exp.port);
+    if (authStatus) {
+      exp.authStatus = authStatus;
+    }
+  }
+
   results.findings = generatePortFindings(results);
 
   onProgress('Port scan complete');
   return results;
+}
+
+async function verifyServiceAuth(targetIP, port) {
+  const net = require('net');
+  if (port === 6379) {
+    // Redis test
+    return new Promise((resolve) => {
+      const sock = new net.Socket();
+      sock.setTimeout(4000);
+      let received = '';
+      sock.connect(port, targetIP, () => {
+        sock.write('PING\r\n');
+      });
+      sock.on('data', (d) => {
+        received += d.toString();
+        sock.destroy();
+      });
+      sock.on('close', () => {
+        if (received.includes('+PONG')) {
+          resolve({ unauthenticated: true, details: 'Redis responded to PING without authentication (+PONG)' });
+        } else if (received.includes('-NOAUTH') || received.includes('Authentication required')) {
+          resolve({ unauthenticated: false, details: 'Redis requires authentication (-NOAUTH)' });
+        } else {
+          resolve({ unauthenticated: null, details: 'Unknown Redis response' });
+        }
+      });
+      sock.on('error', () => { sock.destroy(); resolve(null); });
+      sock.on('timeout', () => { sock.destroy(); resolve(null); });
+    });
+  }
+
+  if (port === 9200) {
+    // Elasticsearch test
+    try {
+      const r = await fetch(`http://${targetIP}:9200/`, {
+        signal: AbortSignal.timeout(4000),
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      if (r.status === 200) {
+        const text = await r.text().catch(() => '');
+        if (text.includes('cluster_name') || text.includes('lucene_version')) {
+          return { unauthenticated: true, details: 'Elasticsearch REST API accessible without authentication' };
+        }
+      } else if (r.status === 401) {
+        return { unauthenticated: false, details: 'Elasticsearch returned 401 Unauthorized' };
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  if (port === 2375) {
+    // Docker API test
+    try {
+      const r = await fetch(`http://${targetIP}:2375/version`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      if (r.status === 200) {
+        const text = await r.text().catch(() => '');
+        if (text.includes('ApiVersion')) {
+          return { unauthenticated: true, details: 'Docker daemon API accessible without authentication' };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  return null;
 }
 
 function parseNmapXML(xml, results) {
@@ -190,11 +266,31 @@ function generatePortFindings(results) {
   const findings = [];
 
   results.exposedDangerousPorts.forEach(port => {
+    let severity = port.severity;
+    let title = `Dangerous Port Exposed: ${port.port}/${port.service}`;
+    let description = `Port ${port.port} (${port.service}) is publicly accessible. ${port.reason}`;
+    let confidence = 'likely';
+
+    if (port.authStatus) {
+      if (port.authStatus.unauthenticated === true) {
+        severity = 'critical';
+        title = `CRITICAL: Unauthenticated ${port.service} Exposed (Port ${port.port})`;
+        description = `Port ${port.port} (${port.service}) is exposed and ACTIVE WITHOUT AUTHENTICATION: ${port.authStatus.details}`;
+        confidence = 'confirmed';
+      } else if (port.authStatus.unauthenticated === false) {
+        severity = (port.port === 6379 || port.port === 9200) ? 'medium' : port.severity;
+        title = `Exposed Service (Authentication Required): ${port.service} (Port ${port.port})`;
+        description = `Port ${port.port} (${port.service}) is reachable from the internet, but requires authentication: ${port.authStatus.details}. Direct exposure still presents brute-force and zero-day risks.`;
+        confidence = 'confirmed';
+      }
+    }
+
     findings.push({
       id: `PORT-${port.port}`,
-      severity: port.severity,
-      title: `Dangerous Port Exposed: ${port.port}/${port.service}`,
-      description: `Port ${port.port} (${port.service}) is publicly accessible. ${port.reason}`,
+      severity,
+      confidence,
+      title,
+      description,
       module: 'portScan',
       affected: `${results.targetIPs[0]}:${port.port}`,
       remediation: getPortRemediation(port.port),
@@ -204,11 +300,13 @@ function generatePortFindings(results) {
   const dbPorts = [3306, 5432, 27017, 6379, 9200, 1433, 5672, 9092];
   const exposedDBs = results.openPorts.filter(p => dbPorts.includes(p.port));
   if (exposedDBs.length > 0) {
+    const hasUnauth = results.exposedDangerousPorts.some(p => p.authStatus?.unauthenticated === true);
     findings.push({
       id: 'PORT-DB-001',
-      severity: 'critical',
+      severity: hasUnauth ? 'critical' : 'high',
+      confidence: hasUnauth ? 'confirmed' : 'likely',
       title: 'Database Services Publicly Exposed',
-      description: `${exposedDBs.length} database service(s) are publicly accessible: ${exposedDBs.map(p => p.service).join(', ')}`,
+      description: `${exposedDBs.length} database service(s) are publicly accessible: ${exposedDBs.map(p => p.service).join(', ')}${hasUnauth ? ' (Unauthenticated access confirmed!)' : ''}`,
       module: 'portScan',
       remediation: 'Move database services behind a firewall. Use VPN or bastion host for access.',
     });

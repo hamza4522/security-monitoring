@@ -7,6 +7,7 @@ async function runWebTechFingerprint(domain, onProgress) {
   const results = {
     domain, url: null, technologies: [], cms: null,
     frameworks: [], cdn: null, analytics: [], security: [], findings: [],
+    _responseHeaders: {}, // raw headers — used by cveEnrichment for version extraction
   };
 
   const urls = [`https://${domain}`, `http://${domain}`];
@@ -26,6 +27,7 @@ async function runWebTechFingerprint(domain, onProgress) {
       html = await response.text();
       finalUrl = url;
       results.url = response.url || url;
+      results._responseHeaders = Object.fromEntries(response.headers.entries());
       break;
     } catch (_) {}
   }
@@ -75,30 +77,40 @@ async function runWebTechFingerprint(domain, onProgress) {
 function detectFromHeaders(headers) {
   const techs = [];
   const sigs = [
-    { header: 'server', pattern: /nginx/i, name: 'Nginx', category: 'Web Server' },
-    { header: 'server', pattern: /apache/i, name: 'Apache', category: 'Web Server' },
-    { header: 'server', pattern: /Microsoft-IIS/i, name: 'IIS', category: 'Web Server' },
-    { header: 'server', pattern: /openresty/i, name: 'OpenResty', category: 'Web Server' },
-    { header: 'server', pattern: /cloudflare/i, name: 'Cloudflare', category: 'CDN' },
-    { header: 'server', pattern: /AmazonS3/i, name: 'Amazon S3', category: 'Cloud Storage' },
-    { header: 'via', pattern: /cloudfront/i, name: 'Amazon CloudFront', category: 'CDN' },
-    { header: 'x-cdn', pattern: /akamai/i, name: 'Akamai', category: 'CDN' },
-    { header: 'x-fastly-request-id', pattern: /.+/, name: 'Fastly', category: 'CDN' },
-    { header: 'cf-ray', pattern: /.+/, name: 'Cloudflare', category: 'CDN' },
-    { header: 'x-amz-cf-id', pattern: /.+/, name: 'Amazon CloudFront', category: 'CDN' },
-    { header: 'x-powered-by', pattern: /php/i, name: 'PHP', category: 'Language' },
-    { header: 'x-powered-by', pattern: /asp\.net/i, name: 'ASP.NET', category: 'Backend Framework' },
-    { header: 'x-powered-by', pattern: /express/i, name: 'Express.js', category: 'Backend Framework' },
-    { header: 'x-powered-by', pattern: /next\.js/i, name: 'Next.js', category: 'Frontend Framework' },
-    { header: 'x-powered-by', pattern: /rails/i, name: 'Ruby on Rails', category: 'Backend Framework' },
-    { header: 'x-sucuri-id', pattern: /.+/, name: 'Sucuri', category: 'WAF' },
-    { header: 'x-waf-event-info', pattern: /.+/, name: 'Incapsula', category: 'WAF' },
-    { header: 'x-cache', pattern: /cloudfront/i, name: 'Amazon CloudFront', category: 'CDN' },
+    { header: 'server', pattern: /nginx\/(\d+\.\d+\.?\d*)/i,          name: 'Nginx',            category: 'Web Server' },
+    { header: 'server', pattern: /nginx/i,                              name: 'Nginx',            category: 'Web Server' },
+    { header: 'server', pattern: /Apache\/(\d+\.\d+\.?\d*)/i,          name: 'Apache',           category: 'Web Server' },
+    { header: 'server', pattern: /apache/i,                             name: 'Apache',           category: 'Web Server' },
+    { header: 'server', pattern: /Microsoft-IIS\/(\d+\.\d*)/i,          name: 'IIS',              category: 'Web Server' },
+    { header: 'server', pattern: /Microsoft-IIS/i,                      name: 'IIS',              category: 'Web Server' },
+    { header: 'server', pattern: /openresty\/(\d+\.\d+\.?\d*)/i,        name: 'OpenResty',        category: 'Web Server' },
+    { header: 'server', pattern: /openresty/i,                          name: 'OpenResty',        category: 'Web Server' },
+    { header: 'server', pattern: /cloudflare/i,                         name: 'Cloudflare',       category: 'CDN' },
+    { header: 'server', pattern: /AmazonS3/i,                           name: 'Amazon S3',        category: 'Cloud Storage' },
+    { header: 'server', pattern: /Apache Tomcat\/(\d+\.\d+\.?\d*)/i,    name: 'Tomcat',           category: 'App Server' },
+    { header: 'via',    pattern: /cloudfront/i,                         name: 'Amazon CloudFront',category: 'CDN' },
+    { header: 'x-cdn',  pattern: /akamai/i,                             name: 'Akamai',           category: 'CDN' },
+    { header: 'x-fastly-request-id', pattern: /.+/,                     name: 'Fastly',           category: 'CDN' },
+    { header: 'cf-ray', pattern: /.+/,                                  name: 'Cloudflare',       category: 'CDN' },
+    { header: 'x-amz-cf-id', pattern: /.+/,                            name: 'Amazon CloudFront',category: 'CDN' },
+    { header: 'x-powered-by', pattern: /PHP\/(\d+\.\d+\.?\d*)/i,        name: 'PHP',              category: 'Language' },
+    { header: 'x-powered-by', pattern: /php/i,                          name: 'PHP',              category: 'Language' },
+    { header: 'x-powered-by', pattern: /asp\.net/i,                     name: 'ASP.NET',          category: 'Backend Framework' },
+    { header: 'x-powered-by', pattern: /express\/(\d+\.\d+\.?\d*)/i,    name: 'Express.js',       category: 'Backend Framework' },
+    { header: 'x-powered-by', pattern: /express/i,                      name: 'Express.js',       category: 'Backend Framework' },
+    { header: 'x-powered-by', pattern: /next\.js/i,                     name: 'Next.js',          category: 'Frontend Framework' },
+    { header: 'x-powered-by', pattern: /rails/i,                        name: 'Ruby on Rails',    category: 'Backend Framework' },
+    { header: 'x-sucuri-id',        pattern: /.+/,                      name: 'Sucuri',           category: 'WAF' },
+    { header: 'x-waf-event-info',   pattern: /.+/,                      name: 'Incapsula',        category: 'WAF' },
+    { header: 'x-cache', pattern: /cloudfront/i,                        name: 'Amazon CloudFront',category: 'CDN' },
   ];
   sigs.forEach(sig => {
     const val = headers[sig.header] || '';
-    if (sig.pattern.test(val)) {
-      techs.push({ name: sig.name, category: sig.category, confidence: 'high', source: 'headers', evidence: `${sig.header}: ${val.substring(0, 80)}` });
+    const m = val.match(sig.pattern);
+    if (m) {
+      // m[1] is the version capture group if the pattern has one
+      techs.push({ name: sig.name, category: sig.category, confidence: 'high', source: 'headers',
+        evidence: `${sig.header}: ${val.substring(0, 80)}`, version: m[1] || null });
     }
   });
   return techs;
@@ -225,11 +237,23 @@ async function detectCMSPaths(baseUrl) {
     try {
       const url = baseUrl + path;
       const res = await fetch(url, {
-        method: 'HEAD',
+        method: 'GET',
         signal: AbortSignal.timeout(5000),
         redirect: 'manual',
       });
-      if (res.status < 400 || res.status === 403) {
+      // 403/401 means access is blocked/protected, not an unauthenticated exposure
+      if (['Security Risk', 'Database Admin'].includes(category)) {
+        if (res.status === 200) {
+          const body = await res.text().catch(() => '');
+          // Confirm not a generic redirect/soft-404
+          const isReal = (path === '/.git/' && body.includes('ref:')) ||
+                         (path === '/.env' && /DB_|APP_|AWS_|SECRET/i.test(body)) ||
+                         (path.includes('admin') && /phpMyAdmin|Adminer/i.test(body));
+          if (isReal) {
+            techs.push({ name, category, confidence: 'high', source: 'path_probe', evidence: `${path} → HTTP 200 (confirmed content)`, url });
+          }
+        }
+      } else if (res.status === 200) {
         techs.push({ name, category, confidence: 'high', source: 'path_probe', evidence: `${path} → HTTP ${res.status}`, url });
       }
     } catch (_) {}
@@ -242,9 +266,12 @@ async function detectCMSPaths(baseUrl) {
 function generateWebTechFindings(results, headers) {
   const findings = [];
   results.technologies.filter(t => ['Security Risk', 'Database Admin', 'Info Disclosure'].includes(t.category)).forEach(tech => {
-    const severity = ['Security Risk', 'Database Admin'].includes(tech.category) ? 'critical' : 'medium';
+    // Only flag true exposures as critical
+    const severity = ['Security Risk', 'Database Admin'].includes(tech.category) ? 'critical' : 'info';
     findings.push({
-      id: `WEB-${tech.name.replace(/\s+/g, '-').toUpperCase()}`, severity,
+      id: `WEB-${tech.name.replace(/\s+/g, '-').toUpperCase()}`,
+      severity,
+      confidence: 'confirmed',
       title: `Exposed: ${tech.name}`,
       description: `${tech.name} was detected at ${tech.url || 'the target'}. ${tech.evidence || ''}`,
       module: 'webTechFingerprint', affected: tech.url,
@@ -254,8 +281,11 @@ function generateWebTechFindings(results, headers) {
 
   if (results.cms?.name === 'WordPress') {
     findings.push({
-      id: 'WEB-WP-001', severity: 'medium', title: 'WordPress CMS Detected',
-      description: 'WordPress detected. Ensure it is up to date and hardened.',
+      id: 'WEB-WP-001',
+      severity: 'info',
+      confidence: 'confirmed',
+      title: 'WordPress CMS Detected',
+      description: 'WordPress was detected. Ensure all plugins and themes are regularly updated and hardened.',
       module: 'webTechFingerprint',
       remediation: 'Disable XML-RPC if not needed, restrict wp-admin by IP, install a security plugin.',
     });

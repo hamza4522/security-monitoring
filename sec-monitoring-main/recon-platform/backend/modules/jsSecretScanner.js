@@ -16,8 +16,8 @@
 const UA = 'Mozilla/5.0 (compatible; SecurityScanner/2.0)';
 const MAX_JS_FILES   = 20;   // max JS files to scan
 const MAX_JS_SIZE    = 500_000; // bytes — skip huge bundles beyond this
-const ENTROPY_THRESH = 4.5;  // Shannon entropy threshold for high-entropy strings
-const HE_MIN_LEN     = 20;   // minimum string length for entropy check
+const ENTROPY_THRESH = 4.8;  // Shannon entropy threshold for high-entropy strings (raised from 4.5 to avoid minified var names)
+const HE_MIN_LEN     = 24;   // minimum string length for entropy check (raised from 20)
 const HE_MAX_LEN     = 80;   // maximum string length for entropy check
 
 // ── Secret Patterns ───────────────────────────────────────────────────────────
@@ -44,10 +44,14 @@ const SECRET_PATTERNS = [
   {
     id: 'GCP-API-KEY',
     name: 'Google Cloud / GCP API Key',
-    severity: 'critical',
+    // Browser-facing Google API keys (Maps, Firebase) are DESIGNED to be public
+    // in client-side code — they are protected by HTTP-referrer / API
+    // restrictions, not secrecy. So presence alone is not critical; the real
+    // risk is an UNRESTRICTED key. Report as medium and advise verification.
+    severity: 'medium',
     regex: /\b(AIza[0-9A-Za-z\-_]{35})\b/g,
-    desc: 'Google Cloud API key detected. May grant access to Google APIs including Maps, Translation, Firebase, etc.',
-    fix: 'Restrict the API key to specific APIs and HTTP referrers in Google Cloud Console. Rotate immediately.',
+    desc: 'Google API key detected in client-side code. This is normal for Maps/Firebase keys (which are meant to be public), but an unrestricted key can be abused for quota theft or billing fraud.',
+    fix: 'Confirm the key has HTTP-referrer and API restrictions set in Google Cloud Console. Rotate only if it is a server-side key that was exposed.',
   },
   {
     id: 'FIREBASE-CONFIG',
@@ -227,6 +231,7 @@ const SECRET_PATTERNS = [
     id: 'GENERIC-SECRET',
     name: 'Generic Secret / Password in Code',
     severity: 'high',
+    // Only flag when the value is NOT a common placeholder/example string
     regex: /(?:password|passwd|secret|api_key|apikey|auth_token|access_token|private_key)\s*[:=]\s*["']([^"']{8,60})["']/gi,
     desc: 'Hardcoded credential or secret value found in JavaScript.',
     fix: 'Remove hardcoded credentials. Use environment variables and server-side secret management.',
@@ -257,9 +262,12 @@ function findHighEntropyStrings(source) {
     const s = m[1];
     if (seen.has(s)) continue;
     seen.add(s);
-    // Skip common false positives
-    if (/^[A-Za-z]+$/.test(s)) continue; // all letters = probably a word
+    // Skip obvious false positives
+    if (/^[A-Za-z]+$/.test(s)) continue;        // all letters = probably a word
+    if (s.includes('://')) continue;             // full URLs
+    if (s.startsWith('/') || s.startsWith('./')) continue; // file/dir paths
     if (s.includes('http') || s.includes('www') || s.includes('cdn')) continue;
+    if (/^[0-9a-f]+$/i.test(s) && s.length < 32) continue; // short hex = likely a color or ID
     if (s.length < HE_MIN_LEN || s.length > HE_MAX_LEN) continue;
     const e = shannonEntropy(s);
     if (e >= ENTROPY_THRESH) {
@@ -322,11 +330,27 @@ function scanForSecrets(source, fileUrl) {
   const found = [];
   const seen = new Set();
 
+  // Placeholder/example values to exclude from GENERIC-SECRET matches
+  const PLACEHOLDER_VALS = new Set([
+    'your-secret', 'your_secret', 'your-api-key', 'your_api_key', 'changeme',
+    'password', 'secret', 'example', 'placeholder', 'xxxxxxxx', '********',
+    'your-password', 'your_password', 'supersecret', 'mysecret', 'test',
+    'abc123', '12345678', 'passw0rd', 'p@ssw0rd', 'enter_key_here',
+    'example.com', 'localhost', '0.0.0.0', '127.0.0.1', 'bearer', 'undefined',
+    'null', 'false', 'true', 'none', 'token', 'default', 'dummy', 'sample'
+  ]);
+
   for (const pattern of SECRET_PATTERNS) {
     pattern.regex.lastIndex = 0; // reset global regex
     let m;
     while ((m = pattern.regex.exec(source)) !== null) {
       const match = m[1] || m[0];
+
+      // Skip placeholder values for generic secret pattern
+      if (pattern.id === 'GENERIC-SECRET' && PLACEHOLDER_VALS.has(match.toLowerCase())) continue;
+      // Also skip very short matches for generic secret (likely a test value)
+      if (pattern.id === 'GENERIC-SECRET' && match.length < 12) continue;
+
       const key = `${pattern.id}:${match.slice(0, 20)}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -451,11 +475,12 @@ async function runJSSecretScanner(domain, onProgress) {
   if (heUniq.length >= 3) {
     results.findings.push({
       id:          'JSSCAN-HIGH-ENTROPY',
-      severity:    'medium',
+      severity:    'low',
+      confidence:  'possible',
       title:       `${heUniq.length} High-Entropy Strings Found in JavaScript`,
-      description: `Detected ${heUniq.length} strings with Shannon entropy ≥${ENTROPY_THRESH}, suggesting possible hardcoded keys or tokens. Top samples: ${heUniq.map(h => h.value).join(', ')}`,
+      description: `Detected ${heUniq.length} strings with Shannon entropy ≥${ENTROPY_THRESH}. This is a heuristic — minified/bundled JavaScript routinely contains high-entropy strings (hashed identifiers, inline base64 assets) that are NOT secrets. Review before acting. Top samples: ${heUniq.map(h => h.value).join(', ')}`,
       module:      'jsSecretScanner',
-      remediation: 'Review flagged strings. Move any secrets to server-side environment variables.',
+      remediation: 'Manually review the flagged strings. If any are real keys or tokens, move them to server-side environment variables.',
     });
   }
 

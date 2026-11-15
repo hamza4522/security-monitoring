@@ -181,7 +181,7 @@ function parseNmapServices(xml, results) {
 function analyzeVersions(services) {
   const VULNS = [
     { product: /openssh/i, version: /^[1-7]\.|8\.[0-3]/, severity: 'medium', issue: 'OpenSSH < 8.4 has known vulnerabilities' },
-    { product: /apache/i, version: /^2\.[0-3]\.|2\.4\.[0-4][0-9]$/, severity: 'high', issue: 'Apache < 2.4.50 has path traversal (CVE-2021-41773)' },
+    { product: /apache/i, version: /^2\.4\.(49|50)\b/, severity: 'high', issue: 'Apache 2.4.49/2.4.50 path traversal & RCE (CVE-2021-41773 / CVE-2021-42013)' },
     { product: /nginx/i, version: /^1\.[0-9]\.|1\.1[0-7]\./, severity: 'medium', issue: 'Nginx version may have known vulnerabilities' },
     { product: /openssl/i, version: /^1\.0\.|^1\.1\.0/, severity: 'high', issue: 'OpenSSL < 1.1.1 is EOL' },
     { product: /redis/i, version: /^[1-5]\./, severity: 'high', issue: 'Redis < 6.0 has security issues' },

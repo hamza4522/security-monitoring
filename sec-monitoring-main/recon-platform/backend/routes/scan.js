@@ -1,5 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
+const dns = require('dns').promises;
 const { runWhoisLookup }       = require('../modules/whoisLookup');
 const { runAssetDiscovery }    = require('../modules/assetDiscovery');
 const { runDNSAssessment }     = require('../modules/dnsAssessment');
@@ -14,14 +15,82 @@ const { runNucleiChecks }      = require('../modules/nucleiChecks');
 const { runJSSecretScanner }   = require('../modules/jsSecretScanner');
 const { runSubdomainTakeover } = require('../modules/subdomainTakeover');
 const { runWAFDetector }       = require('../modules/wafDetector');
-const { calculateRiskScore }   = require('../utils/riskScoring');
+const { runCVEEnrichment }     = require('../modules/cveEnrichment');
+const { runRetireJsChecker }   = require('../modules/retireJsChecker');
+const { runAPIDiscovery }      = require('../modules/apiDiscovery');
+const { runNessusScanner }           = require('../modules/nessusScanner');
+const { runCookieSecurityScanner }   = require('../modules/cookieSecurityScanner');
+const { runSRIScanner }              = require('../modules/sriScanner');
+const { runGitExposureScanner }      = require('../modules/gitExposureScanner');
+const { runRceChecker }              = require('../modules/rceChecker');
+const { calculateRiskScore }         = require('../utils/riskScoring');
+
+// ── SSRF Protection ───────────────────────────────────────────────────────────
+// Blocks scans against RFC-1918, loopback, link-local, and cloud metadata ranges.
+const PRIVATE_IP_RANGES = [
+  /^0\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^127\./,
+  /^169\.254\./,
+  /^::1$/,
+  /^0:0:0:0:0:0:0:1$/,
+  /^fc00:/i,
+  /^fe80:/i,
+];
+
+async function isPrivateTarget(domain) {
+  if (domain === 'localhost' || domain === '0.0.0.0') return true;
+  if (PRIVATE_IP_RANGES.some(r => r.test(domain))) return true;
+
+  try {
+    // dns.lookup uses getaddrinfo and resolves localhost/hosts entries
+    const { address } = await dns.lookup(domain);
+    if (PRIVATE_IP_RANGES.some(r => r.test(address))) return true;
+  } catch (_) {}
+
+  try {
+    const ips = await dns.resolve4(domain);
+    return ips.some(ip => PRIVATE_IP_RANGES.some(r => r.test(ip)));
+  } catch (_) {
+    return false;
+  }
+}
+
+// ── Simple in-memory rate limiter for /start ──────────────────────────────────
+// Max 10 scan starts per IP per 60 seconds.
+const _rateLimitMap = new Map(); // ip → { count, resetAt }
+const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let entry = _rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    _rateLimitMap.set(ip, entry);
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
 
 module.exports = (scans, broadcast, alertEngine = null) => {
   const router = express.Router();
 
   // Start a new scan
   router.post('/start', async (req, res) => {
-    const { domain, modules = ['all'] } = req.body;
+    const { domain, modules = ['all'], scanMode = 'full', selectedModules = [] } = req.body;
+    const resolvedMode = scanMode === 'single' ? 'single' : 'full';
+
+    // selectedModules = array of module keys the user chose.
+    // Empty or missing means 'all' (full scan).
+    const runAll = !selectedModules || selectedModules.length === 0;
+
+    let finalSelectedModules = [...(selectedModules || [])];
+    if (!runAll && resolvedMode === 'full' && !finalSelectedModules.includes('assetDiscovery')) {
+      finalSelectedModules.push('assetDiscovery');
+    }
 
     if (!domain) {
       return res.status(400).json({ error: 'Domain is required' });
@@ -46,6 +115,35 @@ module.exports = (scans, broadcast, alertEngine = null) => {
     // Use the cleaned domain from here on
     const domain_ = cleanDomain;
 
+    // All known module keys
+    const ALL_MODULE_KEYS = [
+      'whoisLookup', 'assetDiscovery', 'sslScan', 'dnsAssessment', 'portScan',
+      'serviceFingerprint', 'webTechFingerprint', 'wafDetector', 'vulnAssessment',
+      'nucleiChecks', 'jsSecretScanner', 'subdomainTakeover', 'wapitiscan',
+      'cmsVulnScan', 'cveEnrichment', 'retireJsChecker', 'apiDiscovery',
+      'nessusScanner', 'cookieSecurityScanner', 'sriScanner',
+      'gitExposureScanner', 'rceChecker',
+    ];
+
+    // Build initial module state — unselected modules start as 'skipped'
+    const moduleState = {};
+    for (const key of ALL_MODULE_KEYS) {
+      const isSelected = runAll || finalSelectedModules.includes(key);
+      moduleState[key] = { status: isSelected ? 'pending' : 'skipped', data: null };
+    }
+
+    // ── SSRF Protection ───────────────────────────────────────────────────────
+    // Reject scans that resolve to private/loopback/link-local IPs.
+    if (await isPrivateTarget(domain_)) {
+      return res.status(400).json({ error: 'Target resolves to a private or reserved IP address. External targets only.' });
+    }
+
+    // ── Rate Limiting ─────────────────────────────────────────────────────────
+    const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+    if (!checkRateLimit(clientIP)) {
+      return res.status(429).json({ error: 'Too many scan requests. Please wait before starting a new scan.' });
+    }
+
     const scanId = uuidv4();
     const scan = {
       id: scanId,
@@ -54,32 +152,19 @@ module.exports = (scans, broadcast, alertEngine = null) => {
       progress: 0,
       startedAt: new Date().toISOString(),
       completedAt: null,
-      modules: {
-        whoisLookup:        { status: 'pending', data: null },
-        assetDiscovery:     { status: 'pending', data: null },
-        sslScan:            { status: 'pending', data: null },
-        dnsAssessment:      { status: 'pending', data: null },
-        portScan:           { status: 'pending', data: null },
-        serviceFingerprint: { status: 'pending', data: null },
-        webTechFingerprint: { status: 'pending', data: null },
-        wafDetector:        { status: 'pending', data: null },
-        vulnAssessment:     { status: 'pending', data: null },
-        nucleiChecks:       { status: 'pending', data: null },
-        jsSecretScanner:    { status: 'pending', data: null },
-        subdomainTakeover:  { status: 'pending', data: null },
-        wapitiscan:         { status: 'pending', data: null },
-        cmsVulnScan:        { status: 'pending', data: null },
-      },
+      modules: moduleState,
       findings: [],
       riskScore: null,
       summary: null,
+      scanMode: resolvedMode,
+      selectedModules: runAll ? 'all' : finalSelectedModules,
     };
 
     scans.set(scanId, scan);
-    res.json({ scanId, status: 'started' });
+    res.json({ scanId, status: 'started', scanMode: resolvedMode, selectedModules: scan.selectedModules });
 
     // Run modules asynchronously
-    runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine);
+    runScanPipeline(scanId, domain_, scan, scans, broadcast, alertEngine, runAll ? null : finalSelectedModules);
   });
 
   // Compare two completed scans — GET /api/scan/compare?a=id1&b=id2
@@ -162,7 +247,7 @@ function withTimeout(promise, timeMs, label) {
 const MODULE_TIMEOUT = 120000; // 2 minutes per module
 const GLOBAL_TIMEOUT = 600000; // 10 minutes for the entire scan
 
-async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine) {
+async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngine, selectedModules = null) {
   const emit = (event, data) => {
     broadcast(scanId, { event, ...data });
   };
@@ -181,8 +266,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       label: 'SSL/TLS Certificate Scan',
       weight: 10,
       runner: (domain, onProgress) => {
-        // Pull subdomains discovered by the assetDiscovery module at runtime
-        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        // In single mode: only scan the primary domain, no subdomains
+        const subdomains = scan.scanMode === 'single'
+          ? []
+          : (scan.modules.assetDiscovery?.data?.subdomains || []);
         return runSSLScan(domain, onProgress, subdomains);
       },
     },
@@ -204,18 +291,95 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       label: 'Subdomain Takeover Check',
       weight: 9,
       runner: (domain, onProgress) => {
-        const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+        // In single mode: skip subdomain takeover checks (no subdomains to test)
+        const subdomains = scan.scanMode === 'single'
+          ? []
+          : (scan.modules.assetDiscovery?.data?.subdomains || []);
         return runSubdomainTakeover(domain, onProgress, subdomains);
       },
     },
     { key: 'wapitiscan',        label: 'Active Web Attacks',       runner: runWapitiScan,           weight: 10 },
     { key: 'cmsVulnScan',       label: 'CMS Vulnerability Scan',  runner: runCMSVulnScan,          weight: 9 },
+    {
+      // CVE Enrichment: runs after webTechFingerprint to pass detected tech context
+      key: 'cveEnrichment',
+      label: 'NVD CVE Enrichment',
+      weight: 8,
+      runner: (domain, onProgress) => {
+        // Gather context from previously completed modules
+        const webTechData = scan.modules.webTechFingerprint?.data;
+        // Handle multiTarget structure (take first — the primary domain result)
+        const primaryWebTech = webTechData?.multiTarget
+          ? webTechData.targetResults?.find(r => r?.domain === domain) || webTechData.targetResults?.[0]
+          : webTechData;
+        const technologies = primaryWebTech?.technologies || [];
+        // Extract server / x-powered-by from the detected response headers for version-aware queries
+        const serverHeader  = primaryWebTech?._responseHeaders?.server || '';
+        const poweredBy     = primaryWebTech?._responseHeaders?.['x-powered-by'] || '';
+        return runCVEEnrichment(domain, onProgress, { technologies, serverHeader, poweredBy });
+      },
+    },
+    {
+      // Retire.js: scan target JS files against the vulnerability database
+      key: 'retireJsChecker',
+      label: 'Retire.js Library Check',
+      weight: 7,
+      runner: runRetireJsChecker,
+    },
+    {
+      // API Discovery: enumerate public API endpoints via 9 detection techniques
+      key: 'apiDiscovery',
+      label: 'Public API Discovery',
+      weight: 9,
+      runner: runAPIDiscovery,
+    },
+    {
+      // Nessus-Style Vulnerability Scanner: agentless plugin-based checks
+      key: 'nessusScanner',
+      label: 'Nessus-Style Vulnerability Scan',
+      weight: 12,
+      runner: runNessusScanner,
+    },
+    {
+      // Cookie Security Scanner: per-cookie flag analysis across multiple paths
+      key: 'cookieSecurityScanner',
+      label: 'Cookie Security Scan',
+      weight: 8,
+      runner: runCookieSecurityScanner,
+    },
+    {
+      // SRI Scanner: external script/stylesheet integrity attribute audit
+      key: 'sriScanner',
+      label: 'SRI (Subresource Integrity) Scan',
+      weight: 7,
+      runner: runSRIScanner,
+    },
+    {
+      // Exposed .git / VCS metadata detector (with proof-of-impact evidence)
+      key: 'gitExposureScanner',
+      label: 'Exposed Git Repository Scan',
+      weight: 9,
+      runner: runGitExposureScanner,
+    },
+    {
+      // RCE confirmation via execution-vs-reflection discriminator
+      key: 'rceChecker',
+      label: 'Remote Command Execution Check',
+      weight: 11,
+      runner: runRceChecker,
+    },
   ];
+
+  // Filter pipeline to only run selected modules (null = run all)
+  const activeModuleList = selectedModules
+    ? moduleList.filter(m => selectedModules.includes(m.key))
+    : moduleList;
 
   // Global scan timeout — ensures scan ALWAYS finishes
   const globalTimer = setTimeout(() => {
     if (scan.status === 'running') {
       console.error(`[SCAN ${scanId}] Global timeout reached (${GLOBAL_TIMEOUT / 1000}s). Forcing completion.`);
+      scan.findings = dedupeFindings(scan.findings);
       scan.riskScore = calculateRiskScore(scan);
       scan.summary = buildSummary(scan);
       scan.status = 'complete';
@@ -228,7 +392,7 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   let completedWeight = 0;
 
   try {
-    for (const mod of moduleList) {
+    for (const mod of activeModuleList) {
       if (scan.status === 'cancelled' || scan.status === 'complete') break;
 
       emit('module_start', { module: mod.key, label: mod.label });
@@ -239,11 +403,17 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
         const multiTargetModules = new Set([
           'dnsAssessment', 'portScan', 'serviceFingerprint', 'webTechFingerprint',
           'wafDetector', 'vulnAssessment', 'nucleiChecks', 'jsSecretScanner',
-          'wapitiscan', 'cmsVulnScan'
+          'wapitiscan', 'cmsVulnScan', 'retireJsChecker',
+          'cookieSecurityScanner', 'sriScanner',
+          'gitExposureScanner', 'rceChecker',
+          // cveEnrichment runs only for the primary domain (context-dependent)
         ]);
 
         if (multiTargetModules.has(mod.key)) {
-          const subdomains = scan.modules.assetDiscovery?.data?.subdomains || [];
+          // In 'single' mode: only scan the primary domain — no subdomain expansion
+          const subdomains = scan.scanMode === 'single'
+            ? []
+            : (scan.modules.assetDiscovery?.data?.subdomains || []);
           const targets = [...new Set([domain, ...subdomains])];
           
           const tasks = targets.map(target => async () => {
@@ -285,14 +455,18 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
         completedWeight += mod.weight;
         scan.progress = completedWeight;
 
-        // Collect findings
+        // Collect findings. Ensure every finding carries an `affected` host so
+        // the UI/report never shows "undefined" — modules that omit it get the
+        // scanned target filled in here (per-target for multiTarget modules).
+        const withAffected = (findings, host) =>
+          (findings || []).map(f => (f.affected ? f : { ...f, affected: host }));
         if (result) {
           if (result.multiTarget && result.targetResults) {
             result.targetResults.forEach(tr => {
-              if (tr && tr.findings) scan.findings.push(...tr.findings);
+              if (tr && tr.findings) scan.findings.push(...withAffected(tr.findings, tr.domain || domain));
             });
           } else if (result.findings) {
-            scan.findings.push(...result.findings);
+            scan.findings.push(...withAffected(result.findings, domain));
           }
         }
 
@@ -309,6 +483,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
 
     // Final risk scoring and summary
     if (scan.status !== 'cancelled' && scan.status !== 'complete') {
+      // Collapse the same issue reported by multiple modules on the same host
+      // (e.g. "Missing HSTS" from vulnAssessment + serviceFingerprint +
+      // webTechFingerprint + nessusScanner) so it is not counted 4× in the score.
+      scan.findings = dedupeFindings(scan.findings);
       scan.riskScore = calculateRiskScore(scan);
       scan.summary = buildSummary(scan);
       scan.status = 'complete';
@@ -323,64 +501,88 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   }
 }
 
-function mergeResults(resultsList, mainDomain) {
-  if (!resultsList || resultsList.length === 0) return null;
-  const merged = JSON.parse(JSON.stringify(resultsList[0]));
-  merged.domain = mainDomain;
-
-  for (let i = 1; i < resultsList.length; i++) {
-    const current = resultsList[i];
-    for (const key of Object.keys(current)) {
-      if (key === 'domain') continue;
-
-      if (Array.isArray(current[key])) {
-        merged[key] = (merged[key] || []).concat(current[key]);
-      } else if (typeof current[key] === 'object' && current[key] !== null) {
-        if (!merged[key]) merged[key] = {};
-        for (const subKey of Object.keys(current[key])) {
-          if (typeof current[key][subKey] === 'number') {
-            merged[key][subKey] = (merged[key][subKey] || 0) + current[key][subKey];
-          } else if (Array.isArray(current[key][subKey])) {
-            merged[key][subKey] = (merged[key][subKey] || []).concat(current[key][subKey]);
-          } else if (merged[key][subKey] === undefined) {
-            merged[key][subKey] = current[key][subKey];
-          }
-        }
-      } else if (typeof current[key] === 'number') {
-        merged[key] = (merged[key] || 0) + current[key];
-      }
-    }
-  }
-
-  // Deduplicate findings
-  if (merged.findings && Array.isArray(merged.findings)) {
-    const seen = new Set();
-    merged.findings = merged.findings.filter(f => {
-      const key = `${f.id}-${f.affected || f.title}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  return merged;
-}
-
 async function runConcurrent(tasks, limit) {
   const results = [];
   const executing = [];
   for (const task of tasks) {
-    const p = task().then(r => {
-      executing.splice(executing.indexOf(p), 1);
-      return r;
-    });
+    const p = task();
     executing.push(p);
     results.push(p);
+    // Attach cleanup after pushing so indexOf is always correct even if resolved synchronously
+    p.then(() => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    }).catch(() => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    });
     if (executing.length >= limit) {
       await Promise.race(executing);
     }
   }
   return Promise.all(results);
+}
+
+// ── Finding de-duplication ──────────────────────────────────────────────────
+// Different modules independently report the same underlying issue (most often
+// missing security headers / email-auth records). Collapse them by a canonical
+// category + affected host, keeping the highest-severity copy and recording the
+// other modules that corroborated it.
+const SEV_RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+
+function canonicalCategory(f) {
+  const s = `${f.id || ''} ${f.title || ''}`.toLowerCase();
+  // Ordered checks — first match wins. Each maps the many wordings to one key.
+  const patterns = [
+    ['hsts',                 /hsts|strict-transport-security/],
+    ['csp',                  /content-security-policy|\bcsp\b/],
+    ['x-frame-options',      /x-frame-options|clickjack/],
+    ['x-content-type',       /x-content-type-options|mime.?sniff|nosniff/],
+    ['referrer-policy',      /referrer-policy/],
+    ['permissions-policy',   /permissions-policy|feature-policy/],
+    ['x-xss-protection',     /x-xss-protection/],
+    ['https-redirect',       /https.?redirect|redirect.*https/],
+    ['dmarc',                /dmarc/],
+    ['spf',                  /\bspf\b/],
+    ['dnssec',               /dnssec/],
+    ['server-version',       /server version disclosure|version disclosure/],
+  ];
+  for (const [key, re] of patterns) if (re.test(s)) return key;
+  return null; // not a known cross-module duplicate category
+}
+
+function hostOf(affected) {
+  if (!affected) return '';
+  return String(affected).replace(/^https?:\/\//i, '').replace(/[/:?#].*$/, '').toLowerCase();
+}
+
+function dedupeFindings(findings) {
+  const seen = new Map(); // key → finding we keep
+  const out = [];
+  for (const f of findings) {
+    const cat = canonicalCategory(f);
+    // Only dedupe findings that map to a known shared category; otherwise keep
+    // as-is but still collapse exact (id + host) repeats.
+    const key = cat
+      ? `cat:${cat}::${hostOf(f.affected)}`
+      : `id:${(f.id || f.title || '').toLowerCase()}::${hostOf(f.affected)}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      const copy = { ...f };
+      seen.set(key, copy);
+      out.push(copy);
+    } else {
+      // Keep the higher severity; merge the reporting module list.
+      const modules = new Set([...(existing.reportedBy || [existing.module]), f.module].filter(Boolean));
+      existing.reportedBy = [...modules];
+      if ((SEV_RANK[f.severity] || 0) > (SEV_RANK[existing.severity] || 0)) {
+        existing.severity = f.severity;
+        existing.title = f.title;
+        existing.description = f.description;
+      }
+    }
+  }
+  return out;
 }
 
 function buildSummary(scan) {
@@ -426,5 +628,9 @@ function buildSummary(scan) {
     sslExpired:           ssl?.summary?.expired || 0,
     sslExpiring:          ssl?.summary?.expiring || 0,
     sslValid:             ssl?.summary?.valid || 0,
+    // Nessus
+    nessusPlugins:        modules.nessusScanner?.data?.summary?.totalPlugins || 0,
+    nessusCritical:       modules.nessusScanner?.data?.summary?.critical || 0,
+    nessusHigh:           modules.nessusScanner?.data?.summary?.high || 0,
   };
 }

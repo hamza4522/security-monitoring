@@ -6,20 +6,43 @@ const path = require('path');
 const WebSocket = require('ws');
 const alertEngine = require('./utils/alertEngine');
 
-// Global error handlers to prevent unhandled stream errors (like Z_BUF_ERROR in Node 18 fetch) from crashing the server
+// ── Graceful shutdown on fatal errors ────────────────────────────────────────
+// Do NOT silently swallow uncaughtException — the process may be in a corrupt
+// state. Log it and exit so the process manager (Docker, PM2) can restart cleanly.
 process.on('uncaughtException', (err) => {
-  console.error('[Uncaught Exception]', err);
+  // Ignore known benign Z_BUF_ERROR from Node 18 experimental fetch streams
+  if (err.code === 'Z_BUF_ERROR') return;
+  console.error('[Fatal – Uncaught Exception]', err);
+  process.exit(1);
 });
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('[Unhandled Rejection]', reason);
+  // Don't exit — rejections are often from individual scan HTTP errors
 });
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(cors());
+// ── CORS — restrict to the configured frontend origin ─────────────────────────
+const ALLOWED_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+app.use(cors({ origin: ALLOWED_ORIGIN, optionsSuccessStatus: 200 }));
 app.use(express.json());
+
+// ── API Key Authentication Middleware ─────────────────────────────────────────
+// Set API_KEY in your .env (or leave unset to disable auth in dev).
+const API_KEY = process.env.API_KEY || '';
+if (API_KEY) {
+  app.use('/api', (req, res, next) => {
+    const provided = req.headers['x-api-key'] || req.query.apiKey || '';
+    if (provided !== API_KEY) {
+      return res.status(401).json({ error: 'Unauthorized: missing or invalid API key.' });
+    }
+    next();
+  });
+} else {
+  console.warn('[Auth] API_KEY not set — all /api routes are unauthenticated. Set API_KEY in .env for production.');
+}
 
 // ── Persistent Storage ────────────────────────────────────────────────────────
 
@@ -29,17 +52,6 @@ const DATA_FILE = path.join(DATA_DIR, 'scans.json');
 // In-memory scan storage (populated from disk on startup)
 const scans = new Map();
 const clients = new Map(); // scanId → ws
-
-// Monkeypatch global.fetch to add a hard Promise.race timeout. 
-// Node 18's experimental fetch can hang forever if zlib throws a stream error.
-const originalFetch = global.fetch;
-global.fetch = function(url, options = {}) {
-  const timeoutMs = 12000; // Hard max timeout to prevent infinite hangs
-  return Promise.race([
-    originalFetch(url, options),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Hard fetch timeout (Z_BUF_ERROR prevention)')), timeoutMs))
-  ]);
-};
 
 function loadScans() {
   try {
@@ -85,8 +97,22 @@ function saveScans() {
   }, 1500);
 }
 
+// ── Scan Retention Cap ────────────────────────────────────────────────────────
+// Keep only the most recent 500 completed scans to prevent unbounded memory/disk growth.
+const MAX_STORED_SCANS = 500;
+
+function enforceRetentionCap() {
+  if (scans.size <= MAX_STORED_SCANS) return;
+  const sorted = Array.from(scans.values())
+    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+  const toRemove = sorted.slice(MAX_STORED_SCANS);
+  for (const scan of toRemove) scans.delete(scan.id);
+  console.log(`[Retention] Pruned ${toRemove.length} old scan(s). Keeping ${scans.size}.`);
+}
+
 // Populate the in-memory Map from disk before routes are registered
 loadScans();
+enforceRetentionCap();
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -104,8 +130,9 @@ function broadcast(scanId, data) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   }
-  // Persist whenever a scan finishes
-  if (data.event === 'scan_complete' || data.event === 'module_complete') {
+  // Only persist to disk when the scan finishes — not on every module_complete
+  // (module_complete fires 20x per scan and serialises the full scans.json each time)
+  if (data.event === 'scan_complete') {
     saveScans();
   }
 }
@@ -123,6 +150,15 @@ function broadcastAll(data) {
 // ── Alert Engine ──────────────────────────────────────────────────────────────
 
 alertEngine.init(broadcastAll);
+
+// ── Health Endpoint ───────────────────────────────────────────────────────────
+// Exempt from API_KEY auth — used by Docker healthcheck and load balancers.
+app.get('/health', (req, res) => res.json({
+  status: 'ok',
+  uptime: Math.floor(process.uptime()),
+  scans: scans.size,
+  ts: new Date().toISOString(),
+}));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-const { execCommand, isToolAvailable } = require('../utils/exec');
+const { execCommand, execFileCommand, isToolAvailable } = require('../utils/exec');
 
 /**
  * Module 1: Asset Discovery & Attack Surface Mapping
@@ -22,7 +22,7 @@ async function runAssetDiscovery(domain, onProgress) {
   if (await isToolAvailable('subfinder')) {
     results.toolsUsed.push('subfinder');
     try {
-      const output = await execCommand(`subfinder -d ${domain} -silent -timeout 30`, 60000);
+      const output = await execFileCommand('subfinder', ['-d', domain, '-silent', '-timeout', '30'], 60000);
       const subs = output.split('\n').map(s => s.trim()).filter(Boolean);
       results.subdomains = [...new Set([domain, ...subs])];
       onProgress(`Found ${results.subdomains.length} subdomains`);
@@ -90,29 +90,29 @@ async function runAssetDiscovery(domain, onProgress) {
 
   // --- Subdomain Takeover Detection ---
   onProgress('Checking for subdomain takeover vulnerabilities...');
-  const takeoverFindings = checkSubdomainTakeover(results.subdomains, results.ipAddresses);
+  const takeoverFindings = await checkSubdomainTakeover(results.subdomains, results.ipAddresses, domain);
   results.findings.push(...takeoverFindings);
 
   // --- Generate Findings ---
-  if (results.subdomains.length > 50) {
+  if (results.subdomains.length > 100) {
     results.findings.push({
       id: 'ASSET-001',
       severity: 'info',
       title: 'Large Attack Surface',
-      description: `${results.subdomains.length} subdomains discovered, indicating a large attack surface.`,
+      description: `${results.subdomains.length} subdomains discovered. A large surface area increases the likelihood of a misconfigured or forgotten asset.`,
       module: 'assetDiscovery',
-      remediation: 'Audit and decommission unused subdomains. Implement subdomain inventory tracking.',
+      remediation: 'Maintain a live subdomain inventory. Decommission unused subdomains and implement a subdomain lifecycle policy.',
     });
   }
 
   if (results.wafDetected.length === 0 && results.liveHosts.length > 0) {
     results.findings.push({
       id: 'ASSET-002',
-      severity: 'medium',
-      title: 'No WAF Detected',
-      description: 'No Web Application Firewall was detected on any live hosts.',
+      severity: 'info',
+      title: 'No WAF Detected on Live Hosts',
+      description: 'No Web Application Firewall signatures were detected on any live hosts. This is informational — many secure sites use origin-level controls without a dedicated WAF.',
       module: 'assetDiscovery',
-      remediation: 'Consider deploying a WAF (Cloudflare, AWS WAF, Akamai) to protect web applications.',
+      remediation: 'Consider deploying a WAF (Cloudflare, AWS WAF, Akamai) for additional protection, particularly for public-facing applications.',
     });
   }
 
@@ -134,7 +134,10 @@ async function basicSubdomainEnum(domain, onProgress) {
         if (entry.name_value) {
           entry.name_value.split('\n').forEach(name => {
             name = name.trim().toLowerCase();
-            if (name && !name.includes('*')) found.add(name);
+            // crt.sh name_value lines can contain email addresses (RFC822 SANs)
+            // and intermediate-CA common names. Only keep valid hostnames that
+            // actually belong to the target domain.
+            if (isValidSubdomain(name, domain)) found.add(name);
           });
         }
       });
@@ -231,26 +234,89 @@ function parsehttpxLine(line) {
   }
 }
 
+// ---- Validate that a string is a real subdomain of the target domain ----
+// Rejects email addresses (user@example.com), CA common names
+// ("as207960 test intermediate - example.com"), wildcards, and any value that
+// is not a syntactically valid hostname under the target domain.
+function isValidSubdomain(name, domain) {
+  if (!name || typeof name !== 'string') return false;
+  if (name.includes('*') || name.includes('@') || /\s/.test(name)) return false;
+  // RFC 1123 hostname: labels of a-z, 0-9, hyphen (not leading/trailing).
+  const hostnameRe = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+  if (!hostnameRe.test(name)) return false;
+  // Must be the apex domain itself or a subdomain of it.
+  return name === domain || name.endsWith(`.${domain}`);
+}
+
 // ---- Check for potential subdomain takeovers ----
-function checkSubdomainTakeover(subdomains, ipAddresses) {
+// A dangling A/AAAA record alone is NOT a takeover. A real takeover requires a
+// CNAME pointing at a de-provisioned third-party service whose hostname can be
+// re-registered by an attacker. We only flag a subdomain when it (a) fails to
+// resolve to an IP and (b) has a CNAME pointing at a known claimable provider.
+const TAKEOVER_FINGERPRINTS = [
+  { service: 'AWS S3',          match: /\.s3[.-][\w.-]*amazonaws\.com$/ },
+  { service: 'AWS CloudFront',  match: /\.cloudfront\.net$/ },
+  { service: 'GitHub Pages',    match: /\.github\.io$/ },
+  { service: 'Heroku',          match: /\.herokuapp\.com$/ },
+  { service: 'Heroku',          match: /\.herokudns\.com$/ },
+  { service: 'Azure',           match: /\.(azurewebsites\.net|cloudapp\.net|trafficmanager\.net|blob\.core\.windows\.net)$/ },
+  { service: 'Fastly',          match: /\.fastly\.net$/ },
+  { service: 'Netlify',         match: /\.netlify\.(app|com)$/ },
+  { service: 'Shopify',         match: /\.myshopify\.com$/ },
+  { service: 'Zendesk',         match: /\.zendesk\.com$/ },
+  { service: 'Pantheon',        match: /\.pantheonsite\.io$/ },
+  { service: 'Surge.sh',        match: /\.surge\.sh$/ },
+  { service: 'Bitbucket',       match: /\.bitbucket\.io$/ },
+  { service: 'Unbounce',        match: /\.unbouncepages\.com$/ },
+  { service: 'Readme.io',       match: /\.readme\.io$/ },
+  { service: 'Wordpress.com',   match: /\.wordpress\.com$/ },
+];
+
+async function checkSubdomainTakeover(subdomains, ipAddresses, domain) {
+  const dns = require('dns').promises;
   const findings = [];
   const resolvedHosts = new Set(ipAddresses.map(r => r.host));
 
-  // Subdomains that don't resolve are potential dangling DNS entries
-  const dangling = subdomains.filter(s => !resolvedHosts.has(s));
-  dangling.forEach(sub => {
+  // Only consider valid subdomains that did not resolve to an IP in this scan.
+  const candidates = subdomains.filter(
+    s => isValidSubdomain(s, domain) && !resolvedHosts.has(s)
+  );
+
+  for (const sub of candidates) {
+    if (findings.length >= 10) break; // Cap at 10 findings
+    let cnameChain = [];
+    try {
+      cnameChain = await dns.resolveCname(sub);
+    } catch (_) {
+      continue; // No CNAME → nothing to take over; skip (avoids false positives)
+    }
+
+    const fp = cnameChain
+      .map(target => TAKEOVER_FINGERPRINTS.find(f => f.match.test(target.toLowerCase())))
+      .find(Boolean);
+    if (!fp) continue; // CNAME points somewhere, but not a known claimable service.
+
+    // Confirm the CNAME target itself does not resolve (truly dangling).
+    let targetResolves = true;
+    try {
+      await dns.resolve4(cnameChain[0]);
+    } catch (_) {
+      targetResolves = false;
+    }
+    if (targetResolves) continue;
+
     findings.push({
       id: 'ASSET-TAKEOVER-001',
       severity: 'high',
       title: 'Potential Subdomain Takeover',
-      description: `Subdomain ${sub} has DNS records but no IP resolution. May be vulnerable to takeover.`,
+      description: `Subdomain ${sub} has a dangling CNAME to ${cnameChain[0]} (${fp.service}), which does not resolve. An attacker may be able to claim this ${fp.service} resource and serve content on your subdomain.`,
       module: 'assetDiscovery',
       affected: sub,
-      remediation: 'Remove DNS records for decommissioned services, or point to active infrastructure.',
+      remediation: `Remove the dangling DNS record for ${sub}, or re-provision the ${fp.service} resource it points to.`,
     });
-  });
+  }
 
-  return findings.slice(0, 10); // Cap at 10 findings
+  return findings;
 }
 
 module.exports = { runAssetDiscovery };

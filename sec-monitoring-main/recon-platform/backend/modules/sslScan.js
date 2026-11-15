@@ -80,6 +80,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-EXPIRED-${host}`,
           severity:    'critical',
+          confidence:  'confirmed',
           title:       `SSL Certificate EXPIRED: ${host}`,
           description: `The SSL certificate for ${host} expired ${Math.abs(daysLeft)} day(s) ago (on ${new Date(info.validTo).toLocaleDateString()}). Browsers will show a security warning and block access.`,
           module:      'sslScan',
@@ -91,6 +92,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-EXPIRING-${host}`,
           severity:    daysLeft <= 7 ? 'high' : 'medium',
+          confidence:  'confirmed',
           title:       `SSL Certificate Expiring Soon: ${host} (${daysLeft} days)`,
           description: `The SSL certificate for ${host} will expire in ${daysLeft} day(s) on ${new Date(info.validTo).toLocaleDateString()}. Failure to renew will cause browsers to display security warnings.`,
           module:      'sslScan',
@@ -106,6 +108,7 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         results.findings.push({
           id:          `SSL-SELFSIGNED-${host}`,
           severity:    'high',
+          confidence:  'confirmed',
           title:       `Self-Signed SSL Certificate: ${host}`,
           description: `The certificate for ${host} is self-signed (issuer = subject). Browsers display "not trusted" warnings to visitors, which erodes user trust and can indicate a misconfiguration.`,
           module:      'sslScan',
@@ -114,16 +117,43 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
         });
       }
 
-      // Weak protocol check
-      if (info.protocol && (info.protocol === 'TLSv1' || info.protocol === 'TLSv1.1' || info.protocol === 'SSLv3')) {
+      // ── Supported-protocol enumeration ─────────────────────────────────────
+      // Probe each TLS version independently so we detect protocols the server
+      // ACCEPTS (not merely the one negotiated by default). This catches servers
+      // that still allow TLS 1.0/1.1 even though 1.2/1.3 is preferred.
+      const proto = await probeProtocols(host);
+      const hostEntry = results.hosts.find(hh => hh.host === host);
+      if (hostEntry) hostEntry.supportedProtocols = proto;
+
+      // Flag deprecated TLS ONLY on a clean handshake (proto.supported). We do
+      // NOT infer support from post-negotiation errors: a modern OpenSSL client
+      // produces the same key-exchange error whether or not the server actually
+      // speaks TLS 1.0/1.1, so that signal is unreliable and would false-positive.
+      // Trade-off: a legacy-only server whose old cipher this client can't
+      // complete may be missed — a deliberate false-negative over a false-positive.
+      const weak = proto.supported.filter(p => p === 'TLSv1' || p === 'TLSv1.1');
+
+      if (weak.length > 0) {
         results.findings.push({
           id:          `SSL-WEAKPROTO-${host}`,
           severity:    'high',
-          title:       `Weak TLS Protocol Negotiated: ${host} (${info.protocol})`,
-          description: `The server negotiated ${info.protocol} which is deprecated and insecure. Attackers can exploit weaknesses in these protocol versions.`,
+          confidence:  'confirmed',
+          title:       `Deprecated TLS Protocol Supported: ${host} (${weak.join(', ')})`,
+          description: `The server at ${host} completed a handshake over ${weak.join(' and ')}, which ${weak.length > 1 ? 'are' : 'is'} deprecated (RFC 8996) and vulnerable to downgrade and BEAST/POODLE-style attacks. Supported protocols: ${proto.supported.join(', ') || 'none'}.`,
           module:      'sslScan',
           affected:    host,
-          remediation: 'Disable TLSv1 and TLSv1.1. Configure server to only accept TLSv1.2 and TLSv1.3.',
+          remediation: 'Disable TLSv1.0 and TLSv1.1 at the server. Accept only TLSv1.2 and TLSv1.3.',
+        });
+      } else if (proto.supported.length > 0 && !proto.supported.includes('TLSv1.3')) {
+        results.findings.push({
+          id:          `SSL-NO-TLS13-${host}`,
+          severity:    'low',
+          confidence:  'confirmed',
+          title:       `TLS 1.3 Not Supported: ${host}`,
+          description: `The server at ${host} supports ${proto.supported.join(', ')} but not TLSv1.3. TLS 1.3 removes legacy cipher suites and improves performance and security.`,
+          module:      'sslScan',
+          affected:    host,
+          remediation: 'Enable TLSv1.3 support on the server where possible.',
         });
       }
     } catch (err) {
@@ -146,6 +176,62 @@ async function runSSLScan(domain, onProgress, subdomains = []) {
 
   onProgress(`SSL scan complete — ${results.summary.expired} expired, ${results.summary.expiring} expiring, ${results.summary.valid} valid`);
   return results;
+}
+
+// ── Protocol support prober ───────────────────────────────────────────────────
+/**
+ * Determine which TLS protocol versions a host accepts by attempting a handshake
+ * pinned to each version (minVersion === maxVersion).
+ *
+ * Classifies each version into:
+ *   - supported:  clean handshake completed (definitive).
+ *   - accepted:   handshake reached a stage AFTER version negotiation, then
+ *                 failed on cipher/key-exchange — the server DID speak this TLS
+ *                 version (our modern OpenSSL just couldn't finish with a legacy
+ *                 cipher). Treated as "likely supported".
+ *   - unsupported: the server rejected the version (ssl_choose_client_version /
+ *                 UNSUPPORTED_PROTOCOL) — definitive negative.
+ *   - inconclusive: network error/timeout — we can't tell.
+ *
+ * This lets us flag deprecated TLS without false positives (we never infer
+ * support from a plain network failure) while still catching legacy servers
+ * whose old ciphers a modern client can't complete.
+ */
+async function probeProtocols(host, port = 443) {
+  const VERSIONS = ['TLSv1', 'TLSv1.1', 'TLSv1.2', 'TLSv1.3'];
+  const out = { supported: [], accepted: [], unsupported: [], inconclusive: [] };
+
+  await Promise.all(VERSIONS.map(version => new Promise((resolve) => {
+    let settled = false;
+    const done = (bucket) => { if (!settled) { settled = true; out[bucket].push(version); resolve(); } };
+    let sock;
+    try {
+      sock = tls.connect({
+        host, port, servername: host,
+        rejectUnauthorized: false,
+        minVersion: version,
+        maxVersion: version,
+      }, () => { try { sock.destroy(); } catch (_) {} done('supported'); });
+      sock.on('error', (e) => {
+        try { sock.destroy(); } catch (_) {}
+        const info = `${e && e.code || ''} ${e && e.message || ''}`.toLowerCase();
+        if (/unsupported_protocol|unsupported protocol|wrong_version|wrong ssl version|choose_client_version|no protocols available|protocol_version/.test(info)) {
+          done('unsupported');                       // server refused this version
+        } else if (/econnrefused|etimedout|econnreset|timeout|socket hang up|getaddrinfo|enotfound|ehostunreach/.test(info)) {
+          done('inconclusive');                      // couldn't complete the connection
+        } else {
+          done('accepted');                          // post-negotiation SSL error → version spoken
+        }
+      });
+      sock.setTimeout(6000, () => { try { sock.destroy(); } catch (_) {} done('inconclusive'); });
+    } catch (_) {
+      done('inconclusive');
+    }
+  })));
+
+  // Preserve canonical ordering within each bucket
+  const order = (arr) => VERSIONS.filter(v => arr.includes(v));
+  return { supported: order(out.supported), accepted: order(out.accepted), unsupported: order(out.unsupported), inconclusive: order(out.inconclusive) };
 }
 
 // ── TLS Certificate helper ────────────────────────────────────────────────────
