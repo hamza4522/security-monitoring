@@ -21,6 +21,8 @@ const { runAPIDiscovery }      = require('../modules/apiDiscovery');
 const { runNessusScanner }           = require('../modules/nessusScanner');
 const { runCookieSecurityScanner }   = require('../modules/cookieSecurityScanner');
 const { runSRIScanner }              = require('../modules/sriScanner');
+const { runGitExposureScanner }      = require('../modules/gitExposureScanner');
+const { runRceChecker }              = require('../modules/rceChecker');
 const { calculateRiskScore }         = require('../utils/riskScoring');
 
 // ── SSRF Protection ───────────────────────────────────────────────────────────
@@ -120,6 +122,7 @@ module.exports = (scans, broadcast, alertEngine = null) => {
       'nucleiChecks', 'jsSecretScanner', 'subdomainTakeover', 'wapitiscan',
       'cmsVulnScan', 'cveEnrichment', 'retireJsChecker', 'apiDiscovery',
       'nessusScanner', 'cookieSecurityScanner', 'sriScanner',
+      'gitExposureScanner', 'rceChecker',
     ];
 
     // Build initial module state — unselected modules start as 'skipped'
@@ -351,6 +354,20 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
       weight: 7,
       runner: runSRIScanner,
     },
+    {
+      // Exposed .git / VCS metadata detector (with proof-of-impact evidence)
+      key: 'gitExposureScanner',
+      label: 'Exposed Git Repository Scan',
+      weight: 9,
+      runner: runGitExposureScanner,
+    },
+    {
+      // RCE confirmation via execution-vs-reflection discriminator
+      key: 'rceChecker',
+      label: 'Remote Command Execution Check',
+      weight: 11,
+      runner: runRceChecker,
+    },
   ];
 
   // Filter pipeline to only run selected modules (null = run all)
@@ -362,6 +379,7 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
   const globalTimer = setTimeout(() => {
     if (scan.status === 'running') {
       console.error(`[SCAN ${scanId}] Global timeout reached (${GLOBAL_TIMEOUT / 1000}s). Forcing completion.`);
+      scan.findings = dedupeFindings(scan.findings);
       scan.riskScore = calculateRiskScore(scan);
       scan.summary = buildSummary(scan);
       scan.status = 'complete';
@@ -387,6 +405,7 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
           'wafDetector', 'vulnAssessment', 'nucleiChecks', 'jsSecretScanner',
           'wapitiscan', 'cmsVulnScan', 'retireJsChecker',
           'cookieSecurityScanner', 'sriScanner',
+          'gitExposureScanner', 'rceChecker',
           // cveEnrichment runs only for the primary domain (context-dependent)
         ]);
 
@@ -436,14 +455,18 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
         completedWeight += mod.weight;
         scan.progress = completedWeight;
 
-        // Collect findings
+        // Collect findings. Ensure every finding carries an `affected` host so
+        // the UI/report never shows "undefined" — modules that omit it get the
+        // scanned target filled in here (per-target for multiTarget modules).
+        const withAffected = (findings, host) =>
+          (findings || []).map(f => (f.affected ? f : { ...f, affected: host }));
         if (result) {
           if (result.multiTarget && result.targetResults) {
             result.targetResults.forEach(tr => {
-              if (tr && tr.findings) scan.findings.push(...tr.findings);
+              if (tr && tr.findings) scan.findings.push(...withAffected(tr.findings, tr.domain || domain));
             });
           } else if (result.findings) {
-            scan.findings.push(...result.findings);
+            scan.findings.push(...withAffected(result.findings, domain));
           }
         }
 
@@ -460,6 +483,10 @@ async function runScanPipeline(scanId, domain, scan, scans, broadcast, alertEngi
 
     // Final risk scoring and summary
     if (scan.status !== 'cancelled' && scan.status !== 'complete') {
+      // Collapse the same issue reported by multiple modules on the same host
+      // (e.g. "Missing HSTS" from vulnAssessment + serviceFingerprint +
+      // webTechFingerprint + nessusScanner) so it is not counted 4× in the score.
+      scan.findings = dedupeFindings(scan.findings);
       scan.riskScore = calculateRiskScore(scan);
       scan.summary = buildSummary(scan);
       scan.status = 'complete';
@@ -494,6 +521,68 @@ async function runConcurrent(tasks, limit) {
     }
   }
   return Promise.all(results);
+}
+
+// ── Finding de-duplication ──────────────────────────────────────────────────
+// Different modules independently report the same underlying issue (most often
+// missing security headers / email-auth records). Collapse them by a canonical
+// category + affected host, keeping the highest-severity copy and recording the
+// other modules that corroborated it.
+const SEV_RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+
+function canonicalCategory(f) {
+  const s = `${f.id || ''} ${f.title || ''}`.toLowerCase();
+  // Ordered checks — first match wins. Each maps the many wordings to one key.
+  const patterns = [
+    ['hsts',                 /hsts|strict-transport-security/],
+    ['csp',                  /content-security-policy|\bcsp\b/],
+    ['x-frame-options',      /x-frame-options|clickjack/],
+    ['x-content-type',       /x-content-type-options|mime.?sniff|nosniff/],
+    ['referrer-policy',      /referrer-policy/],
+    ['permissions-policy',   /permissions-policy|feature-policy/],
+    ['x-xss-protection',     /x-xss-protection/],
+    ['https-redirect',       /https.?redirect|redirect.*https/],
+    ['dmarc',                /dmarc/],
+    ['spf',                  /\bspf\b/],
+    ['dnssec',               /dnssec/],
+    ['server-version',       /server version disclosure|version disclosure/],
+  ];
+  for (const [key, re] of patterns) if (re.test(s)) return key;
+  return null; // not a known cross-module duplicate category
+}
+
+function hostOf(affected) {
+  if (!affected) return '';
+  return String(affected).replace(/^https?:\/\//i, '').replace(/[/:?#].*$/, '').toLowerCase();
+}
+
+function dedupeFindings(findings) {
+  const seen = new Map(); // key → finding we keep
+  const out = [];
+  for (const f of findings) {
+    const cat = canonicalCategory(f);
+    // Only dedupe findings that map to a known shared category; otherwise keep
+    // as-is but still collapse exact (id + host) repeats.
+    const key = cat
+      ? `cat:${cat}::${hostOf(f.affected)}`
+      : `id:${(f.id || f.title || '').toLowerCase()}::${hostOf(f.affected)}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      const copy = { ...f };
+      seen.set(key, copy);
+      out.push(copy);
+    } else {
+      // Keep the higher severity; merge the reporting module list.
+      const modules = new Set([...(existing.reportedBy || [existing.module]), f.module].filter(Boolean));
+      existing.reportedBy = [...modules];
+      if ((SEV_RANK[f.severity] || 0) > (SEV_RANK[existing.severity] || 0)) {
+        existing.severity = f.severity;
+        existing.title = f.title;
+        existing.description = f.description;
+      }
+    }
+  }
+  return out;
 }
 
 function buildSummary(scan) {

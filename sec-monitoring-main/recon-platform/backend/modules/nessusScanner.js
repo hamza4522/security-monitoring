@@ -109,6 +109,23 @@ function plugin(id, family, name, severity, description, remediation, cves = [],
   return { pluginId: id, family, name, severity, description, remediation, cves, cvssScore };
 }
 
+/**
+ * Compare two dotted version strings numerically.
+ * Returns -1 if a < b, 0 if equal, 1 if a > b. Missing components are 0.
+ */
+function cmpVersion(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return 0; // non-numeric → treat as equal/unknown
+    if (x < y) return -1;
+    if (x > y) return 1;
+  }
+  return 0;
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 async function runNessusScanner(domain, onProgress) {
@@ -190,15 +207,18 @@ async function runNessusScanner(domain, onProgress) {
       if (m) {
         const ver = m[1];
         const [major, minor, patch] = ver.split('.').map(Number);
-        if (major === 2 && minor === 4 && patch <= 49) {
+        // CVE-2021-41773 affects only Apache 2.4.49; CVE-2021-42013 (incomplete
+        // fix) affects 2.4.49 and 2.4.50. Earlier 2.4.x are NOT vulnerable.
+        if (major === 2 && minor === 4 && (patch === 49 || patch === 50)) {
           emitPlugin(plugin(
-            'NSS-CVE-2021-41773', 'Web Servers', 'Apache 2.4.49 Path Traversal / RCE (CVE-2021-41773)',
+            'NSS-CVE-2021-41773', 'Web Servers', 'Apache Path Traversal / RCE (CVE-2021-41773 / CVE-2021-42013)',
             'critical',
-            `Apache HTTP Server ${ver} is vulnerable to path traversal and possible remote code execution via CVE-2021-41773. An attacker can read files outside the document root.`,
+            `Apache HTTP Server ${ver} is vulnerable to path traversal and possible remote code execution via CVE-2021-41773/CVE-2021-42013. An attacker can read files outside the document root.`,
             'Upgrade Apache to 2.4.51 or later immediately.',
             ['CVE-2021-41773', 'CVE-2021-42013'], 9.8
           ), domain, `Detected version: ${ver}`);
         }
+        // CVE-2023-25690 affects 2.4.0 through 2.4.55 (fixed in 2.4.56).
         if (major === 2 && minor === 4 && patch <= 55) {
           emitPlugin(plugin(
             'NSS-CVE-2023-25690', 'Web Servers', 'Apache HTTP Request Smuggling (CVE-2023-25690)',
@@ -215,8 +235,8 @@ async function runNessusScanner(domain, onProgress) {
       const m = serverHdr.match(/nginx\/([\d.]+)/i);
       if (m) {
         const ver = m[1];
-        const [major, minor, patch] = ver.split('.').map(Number);
-        if (major === 1 && minor <= 20 && patch <= 0) {
+        // CVE-2021-23017 affects nginx 0.6.18 through 1.20.0 (fixed in 1.20.1/1.21.0).
+        if (cmpVersion(ver, '0.6.18') >= 0 && cmpVersion(ver, '1.20.0') <= 0) {
           emitPlugin(plugin(
             'NSS-CVE-2021-23017', 'Web Servers', 'Nginx DNS Resolver Off-By-One Overflow (CVE-2021-23017)',
             'high',
@@ -253,18 +273,21 @@ async function runNessusScanner(domain, onProgress) {
       [], 3.7
     ), baseUrl, poweredBy);
 
-    // PHP version-specific CVEs
+    // PHP end-of-life detection. PHP 7.x (and earlier) reached end-of-life and
+    // no longer receives security patches. We report the EOL status itself —
+    // we do NOT assert specific CVEs here, because CVE applicability depends on
+    // the exact patch level, which cannot be confirmed from the version banner.
     const phpMatch = poweredBy.match(/PHP\/([\d.]+)/i);
     if (phpMatch) {
       const ver = phpMatch[1];
       const parts = ver.split('.').map(Number);
-      if (parts[0] === 7 && parts[1] <= 4) {
+      if (parts[0] < 8) {
         emitPlugin(plugin(
           'NSS-CVE-PHP-EOL', 'Web Servers', 'PHP End-of-Life Version Detected',
-          'high',
-          `PHP ${ver} is end-of-life and no longer receives security updates. Known critical vulnerabilities exist.`,
-          'Upgrade to PHP 8.2 or later.',
-          ['CVE-2022-31625', 'CVE-2022-31626'], 9.8
+          'medium',
+          `PHP ${ver} is end-of-life (all PHP 7.x and earlier branches stopped receiving security updates). Running an EOL interpreter means future vulnerabilities will not be patched.`,
+          'Upgrade to a supported PHP release (8.2 or later). Verify the exact patch level to assess specific known CVEs.',
+          [], 5.3
         ), domain, `PHP/${ver}`);
       }
     }
@@ -371,12 +394,12 @@ async function runNessusScanner(domain, onProgress) {
           }
           if (certInfo.weakKey) {
             emitPlugin(plugin(
-              'NSS-35291', 'TLS/SSL', 'Weak RSA Key Size in SSL Certificate',
+              'NSS-35291', 'TLS/SSL', 'Weak SSL Certificate Key Size',
               'high',
-              `The SSL certificate uses a weak RSA key size (${certInfo.keyBits} bits). Keys below 2048 bits are considered insecure.`,
-              'Replace the certificate with one using at least 2048-bit RSA or an ECDSA key.',
+              `The SSL certificate uses a weak ${certInfo.keyType} key size (${certInfo.keyBits} bits). RSA keys below 2048 bits (or EC keys below 224 bits) are considered insecure.`,
+              'Replace the certificate with one using at least 2048-bit RSA or a 256-bit ECDSA key.',
               [], 7.5
-            ), domain, `Key size: ${certInfo.keyBits} bits`);
+            ), domain, `Key type: ${certInfo.keyType}, size: ${certInfo.keyBits} bits`);
           }
         }
       } catch (_) {}
@@ -564,19 +587,42 @@ async function runNessusScanner(domain, onProgress) {
     { path: '/sitemap.xml',          verify: '<loc>',      id: 'NSS-SITEMAP',      name: 'Sitemap.xml Discloses URL Structure',      sev: 'info',     cves: [] },
   ];
 
+  // ── Soft-404 baseline ───────────────────────────────────────────────────────
+  // Many sites (SPAs, catch-all routers, some CDN/WAF configs) return HTTP 200
+  // for URLs that don't exist. Without accounting for this, every `verify:null`
+  // check (e.g. /backup.sql, /.DS_Store, heapdump) fires on the catch-all page.
+  // Probe two random, certainly-nonexistent paths to learn the server's behaviour.
+  let softNotFound = false;
+  let baselineLen = -1;
+  for (const rnd of [`/nss-404-${Date.now()}-a`, `/nss-404-${Date.now()}-b.html`]) {
+    const rb = await safeFetch(`${baseUrl}${rnd}`, { timeout: 5000 });
+    if (rb.status === 200) { softNotFound = true; baselineLen = (rb.body || '').length; break; }
+  }
+
   await Promise.allSettled(sensitiveChecks.map(async (chk) => {
     const r = await safeFetch(`${baseUrl}${chk.path}`, { timeout: 5000 });
     if (r.status !== 200) return;
     const body = r.body || '';
-    const matched = !chk.verify || body.toLowerCase().includes(chk.verify.toLowerCase());
-    if (!matched) return;
+
+    // When the server soft-404s, a 200 proves nothing on its own. Require a
+    // positive content match, so checks with no `verify` signature are skipped
+    // (they cannot be distinguished from the catch-all page), and matched checks
+    // must also differ from the catch-all page body length.
+    if (softNotFound) {
+      if (!chk.verify) return; // can't verify → would be a false positive
+      if (!body.toLowerCase().includes(chk.verify.toLowerCase())) return;
+      if (body.length === baselineLen) return; // identical to catch-all page
+    } else if (chk.verify && !body.toLowerCase().includes(chk.verify.toLowerCase())) {
+      return;
+    }
+
     emitPlugin(plugin(
       chk.id, 'Information Disclosure', chk.name,
       chk.sev,
       `${chk.path} is publicly accessible and contains sensitive information. This can expose credentials, infrastructure details, or application internals to attackers.`,
       `Restrict access to ${chk.path} via firewall rules or web server configuration. Remove sensitive files from the web root.`,
       chk.cves || [], chk.sev === 'critical' ? 9.1 : chk.sev === 'high' ? 7.5 : 5.3
-    ), `${baseUrl}${chk.path}`, `HTTP 200 — verified content match`);
+    ), `${baseUrl}${chk.path}`, softNotFound ? 'HTTP 200 — content signature matched (soft-404 ruled out)' : 'HTTP 200 — verified content match');
   }));
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -679,9 +725,18 @@ async function runNessusScanner(domain, onProgress) {
     const portChecks = dangerousPorts.map(async (svc) => {
       const open = await portOpen(results.targetIP, svc.port, 3000);
       if (open) {
+        // IMPORTANT: an open port proves the service is EXPOSED, not that the
+        // host is vulnerable to a specific CVE — a fully patched server still
+        // listens on the port. So we do NOT report svc.cves as confirmed CVEs.
+        // They are surfaced only as context for manual version verification.
+        const relatedNote = svc.cves.length
+          ? ` Associated historical CVEs for this service (NOT confirmed for this host — verify the running version/patch level): ${svc.cves.join(', ')}.`
+          : '';
         emitPlugin(plugin(
-          `NSS-PORT-${svc.port}`, 'Network Services', `Dangerous Service Exposed: ${svc.name} (port ${svc.port})`,
-          svc.sev, svc.desc, svc.fix, svc.cves, svc.cvss
+          `NSS-PORT-${svc.port}`, 'Network Services', `Exposed Service: ${svc.name} (port ${svc.port})`,
+          svc.sev, svc.desc + relatedNote, svc.fix,
+          [],         // no confirmed CVEs from a port probe alone
+          svc.cvss
         ), `${results.targetIP}:${svc.port}`, `Port ${svc.port} open`);
       }
     });
@@ -733,7 +788,7 @@ async function runNessusScanner(domain, onProgress) {
   onProgress('[Plugin Family] Security policy and HTTP header analysis...');
 
   const securityHeaderChecks = [
-    { header: 'content-security-policy', id: 'NSS-HDR-CSP',    name: 'Missing Content-Security-Policy Header',    sev: 'high',   desc: 'No Content-Security-Policy (CSP) header is set. CSP is the primary defence against Cross-Site Scripting (XSS) and data injection attacks.', fix: "Set: Content-Security-Policy: default-src 'self'; script-src 'self'" },
+    { header: 'content-security-policy', id: 'NSS-HDR-CSP',    name: 'Missing Content-Security-Policy Header',    sev: 'medium', desc: 'No Content-Security-Policy (CSP) header is set. CSP is an important defence-in-depth control against Cross-Site Scripting (XSS) and data injection, but its absence is not directly exploitable on its own.', fix: "Set: Content-Security-Policy: default-src 'self'; script-src 'self'" },
     { header: 'x-frame-options',         id: 'NSS-HDR-XFO',    name: 'Missing X-Frame-Options Header',           sev: 'medium', desc: 'X-Frame-Options is not set, allowing the site to be embedded in iframes. This enables Clickjacking attacks.', fix: 'Set: X-Frame-Options: DENY (or SAMEORIGIN if iframes are needed).' },
     { header: 'x-content-type-options',  id: 'NSS-HDR-XCTO',   name: 'Missing X-Content-Type-Options Header',    sev: 'low',    desc: 'X-Content-Type-Options: nosniff is not set. Browsers may MIME-sniff responses, leading to XSS via content-type confusion.', fix: 'Set: X-Content-Type-Options: nosniff' },
     { header: 'referrer-policy',         id: 'NSS-HDR-RP',     name: 'Missing Referrer-Policy Header',           sev: 'low',    desc: 'No Referrer-Policy header is configured. Sensitive URLs may be leaked to third parties via the Referer header.', fix: 'Set: Referrer-Policy: strict-origin-when-cross-origin' },
@@ -968,9 +1023,21 @@ function getCertInfo(host) {
         const daysLeft  = Math.round((validTo - now) / 86400000);
         const expired   = daysLeft < 0;
         const selfSigned = cert.issuer?.CN === cert.subject?.CN;
-        const keyBits   = cert.pubkey?.length ? cert.pubkey.length * 8 : 2048;
-        const weakKey   = cert.bits ? cert.bits < 2048 : false;
-        resolve({ validTo: validTo.toISOString(), validFrom: validFrom.toISOString(), daysLeft, expired, selfSigned, weakKey, keyBits: cert.bits || 0 });
+        // Determine key algorithm. Node exposes `modulus`/`exponent` for RSA keys
+        // and `nistCurve`/`asn1Curve` for elliptic-curve keys. This matters because
+        // `cert.bits` is the raw key size: a 256-bit ECDSA key is STRONG
+        // (≈ 3072-bit RSA), so the 2048-bit floor must only apply to RSA.
+        let keyType = 'unknown';
+        if (cert.modulus || cert.exponent) keyType = 'RSA';
+        else if (cert.nistCurve || cert.asn1Curve) keyType = 'EC';
+        const keyBits = cert.bits || 0;
+        // RSA weak below 2048 bits; EC weak below 224 bits (P-224). Unknown types
+        // are not flagged to avoid false positives on EdDSA / newer algorithms.
+        const weakKey =
+          keyType === 'RSA' ? (keyBits > 0 && keyBits < 2048)
+          : keyType === 'EC' ? (keyBits > 0 && keyBits < 224)
+          : false;
+        resolve({ validTo: validTo.toISOString(), validFrom: validFrom.toISOString(), daysLeft, expired, selfSigned, weakKey, keyBits, keyType });
       });
       sock.on('error', () => { clearTimeout(timer); resolve(null); });
     } catch (_) { clearTimeout(timer); resolve(null); }

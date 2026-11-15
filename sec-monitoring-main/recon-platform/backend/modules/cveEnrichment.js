@@ -345,6 +345,14 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
         if (scoreInfo.score === 0) continue;
 
         const versionTag = version ? ` v${version}` : '';
+        const confidence = version ? 'confirmed' : 'possible';
+        // When no version was detected, the CVE came from a bare product keyword
+        // search — it may well be patched on this host. Do NOT display it at the
+        // raw CVSS severity (that would be a false positive); cap it at 'low' and
+        // label it unconfirmed. Version-matched CVEs keep their CVSS severity.
+        const displaySeverity = confidence === 'confirmed' ? severity : 'low';
+        const titlePrefix = confidence === 'confirmed' ? '' : '[Unconfirmed — version not detected] ';
+
         results.cveFindings.push({
           cveId,
           keyword:     keyword,
@@ -353,25 +361,31 @@ async function runCVEEnrichment(domain, onProgress, context = {}) {
           cvssScore:   scoreInfo.score,
           cvssVersion: scoreInfo.version,
           cvssVector:  scoreInfo.vector,
-          severity,
+          severity:    displaySeverity,
+          cvssSeverity: severity,
+          confidence,
           description: desc,
           nvdUrl,
         });
 
         results.findings.push({
           id:          `CVE-ENRICH-${cveId}`,
-          severity,
-          confidence:  version ? 'confirmed' : 'possible',
-          title:       `${cveId} — ${keyword.charAt(0).toUpperCase() + keyword.slice(1)}${versionTag} (CVSS ${scoreInfo.score})`,
-          description: `[NVD] ${desc.slice(0, 300)}${desc.length > 300 ? '...' : ''}`,
+          severity:    displaySeverity,
+          confidence,
+          title:       `${titlePrefix}${cveId} — ${keyword.charAt(0).toUpperCase() + keyword.slice(1)}${versionTag} (CVSS ${scoreInfo.score})`,
+          description: `[NVD] ${desc.slice(0, 300)}${desc.length > 300 ? '...' : ''}` +
+            (confidence === 'confirmed'
+              ? ` Detected ${keyword} ${version} falls within this CVE's affected version range.`
+              : ` NOTE: no version was detected for ${keyword}, so this CVE is a keyword match only and may not apply if the host is patched. CVSS severity if applicable: ${severity}.`),
           module:      'cveEnrichment',
           affected:    nvdUrl,
-          remediation: `Review ${nvdUrl} for patches and mitigations. Published: ${published}.`,
+          remediation: `Review ${nvdUrl} for patches and mitigations. Published: ${published}.` +
+            (confidence === 'possible' ? ' Confirm the running version before treating this as applicable.' : ''),
           cveId,
           cvssScore:   scoreInfo.score,
         });
 
-        results.summary[severity] = (results.summary[severity] || 0) + 1;
+        results.summary[displaySeverity] = (results.summary[displaySeverity] || 0) + 1;
         results.summary.total++;
       }
     } catch (err) {

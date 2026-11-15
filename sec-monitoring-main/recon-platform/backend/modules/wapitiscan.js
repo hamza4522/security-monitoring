@@ -96,7 +96,9 @@ const INFO_PATTERNS = [
   { pattern: /exception in thread/i,            title: 'Java Exception Exposed',        sev: 'high' },
   { pattern: /traceback \(most recent call\)/i, title: 'Python Traceback Exposed',      sev: 'high' },
   { pattern: /sqlexception:/i,                  title: 'SQL Exception in Response',     sev: 'high' },
-  { pattern: /(?:10|172|192)\.\d{1,3}\.\d{1,3}\.\d{1,3}/, title: 'Internal IP Leaked', sev: 'medium' },
+  // Only real RFC1918 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16.
+  // (Public 172.x / 192.x such as Google 172.217.x or TEST-NET 192.0.2.x must NOT match.)
+  { pattern: /\b(?:10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2})\b/, title: 'Internal IP Leaked', sev: 'medium' },
   { pattern: /aws_access_key_id\s*=/i,          title: 'AWS Key in Response',           sev: 'critical' },
   { pattern: /\bDEBUG\s*=\s*True\b/,           title: 'Debug Mode Enabled',            sev: 'high' },
 ];

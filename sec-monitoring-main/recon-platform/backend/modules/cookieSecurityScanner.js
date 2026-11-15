@@ -79,16 +79,21 @@ async function collectCookiesFromUrl(url) {
       signal: AbortSignal.timeout(PROBE_TIMEOUT),
       headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*' },
     });
-    // res.headers.getSetCookie() is Node 18+; fall back to raw header iteration
-    const setCookieHeaders = [];
-    res.headers.forEach((val, key) => {
-      if (key.toLowerCase() === 'set-cookie') setCookieHeaders.push(val);
-    });
-    // Also get all cookies from the `set-cookie` header (some Node versions collapse them)
-    const rawCombined = res.headers.get('set-cookie');
-    if (rawCombined && setCookieHeaders.length === 0) {
-      // Rare: multiple set-cookie collapsed — split on newline
-      rawCombined.split(/\r?\n/).forEach(h => { if (h.trim()) setCookieHeaders.push(h.trim()); });
+    // Prefer getSetCookie() (Node 18.14+/undici): it returns a proper ARRAY with
+    // each Set-Cookie kept separate. headers.forEach / headers.get('set-cookie')
+    // collapse multiple cookies into one comma-joined string, which breaks flag
+    // parsing (a cookie's Secure/HttpOnly gets merged into the next cookie's
+    // name) and causes false "Missing Secure/HttpOnly" findings.
+    let setCookieHeaders = [];
+    if (typeof res.headers.getSetCookie === 'function') {
+      setCookieHeaders = res.headers.getSetCookie();
+    } else {
+      const rawCombined = res.headers.get('set-cookie');
+      if (rawCombined) {
+        // Fallback: split on the comma that precedes a new "name=" pair, while
+        // NOT splitting on commas inside Expires dates (e.g. "Wed, 09 Jun 2021").
+        setCookieHeaders = rawCombined.split(/,(?=\s*[^;=,\s]+=)/).map(h => h.trim()).filter(Boolean);
+      }
     }
     return { headers: Object.fromEntries(res.headers.entries()), setCookieHeaders, status: res.status, url };
   } catch (_) {

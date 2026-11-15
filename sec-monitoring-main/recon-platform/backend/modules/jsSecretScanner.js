@@ -44,10 +44,14 @@ const SECRET_PATTERNS = [
   {
     id: 'GCP-API-KEY',
     name: 'Google Cloud / GCP API Key',
-    severity: 'critical',
+    // Browser-facing Google API keys (Maps, Firebase) are DESIGNED to be public
+    // in client-side code — they are protected by HTTP-referrer / API
+    // restrictions, not secrecy. So presence alone is not critical; the real
+    // risk is an UNRESTRICTED key. Report as medium and advise verification.
+    severity: 'medium',
     regex: /\b(AIza[0-9A-Za-z\-_]{35})\b/g,
-    desc: 'Google Cloud API key detected. May grant access to Google APIs including Maps, Translation, Firebase, etc.',
-    fix: 'Restrict the API key to specific APIs and HTTP referrers in Google Cloud Console. Rotate immediately.',
+    desc: 'Google API key detected in client-side code. This is normal for Maps/Firebase keys (which are meant to be public), but an unrestricted key can be abused for quota theft or billing fraud.',
+    fix: 'Confirm the key has HTTP-referrer and API restrictions set in Google Cloud Console. Rotate only if it is a server-side key that was exposed.',
   },
   {
     id: 'FIREBASE-CONFIG',
@@ -471,11 +475,12 @@ async function runJSSecretScanner(domain, onProgress) {
   if (heUniq.length >= 3) {
     results.findings.push({
       id:          'JSSCAN-HIGH-ENTROPY',
-      severity:    'medium',
+      severity:    'low',
+      confidence:  'possible',
       title:       `${heUniq.length} High-Entropy Strings Found in JavaScript`,
-      description: `Detected ${heUniq.length} strings with Shannon entropy ≥${ENTROPY_THRESH}, suggesting possible hardcoded keys or tokens. Top samples: ${heUniq.map(h => h.value).join(', ')}`,
+      description: `Detected ${heUniq.length} strings with Shannon entropy ≥${ENTROPY_THRESH}. This is a heuristic — minified/bundled JavaScript routinely contains high-entropy strings (hashed identifiers, inline base64 assets) that are NOT secrets. Review before acting. Top samples: ${heUniq.map(h => h.value).join(', ')}`,
       module:      'jsSecretScanner',
-      remediation: 'Review flagged strings. Move any secrets to server-side environment variables.',
+      remediation: 'Manually review the flagged strings. If any are real keys or tokens, move them to server-side environment variables.',
     });
   }
 

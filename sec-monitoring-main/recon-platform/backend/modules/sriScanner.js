@@ -35,6 +35,25 @@ const HIGH_RISK_CDNS = [
   'cdn.datatables.net',
 ];
 
+// Hosts that serve DYNAMIC / evergreen resources where SRI is not applicable by
+// design — the vendor updates the file continuously (so any pinned hash breaks),
+// or serves user-agent-dependent content. Flagging these as "add an integrity
+// hash" is a false positive; we report them at info level with correct advice.
+const SRI_NOT_APPLICABLE = [
+  'fonts.googleapis.com', 'fonts.gstatic.com',          // dynamic, UA-dependent CSS
+  'www.google-analytics.com', 'www.googletagmanager.com', // evergreen analytics
+  'js.stripe.com', 'checkout.stripe.com',               // Stripe requires NO SRI
+  'connect.facebook.net', 'platform.twitter.com',       // evergreen SDKs
+  'cdn.polyfill.io', 'polyfill.io',                     // dynamic per-UA polyfills
+  'cdn.segment.com', 'cdn.amplitude.com',               // evergreen analytics
+  'use.fontawesome.com', 'kit.fontawesome.com',         // dynamic kits
+  'cdn.auth0.com',                                      // evergreen SDK
+];
+
+function isSriNotApplicable(hostname) {
+  return SRI_NOT_APPLICABLE.some(h => hostname === h || hostname.endsWith('.' + h));
+}
+
 // Valid SRI hash prefixes
 const VALID_HASH_PREFIXES = ['sha256-', 'sha384-', 'sha512-'];
 
@@ -289,17 +308,27 @@ async function runSRIScanner(domain, onProgress) {
       results.summary.missingIntegrity++;
       if (res.isHighRiskCDN) results.summary.highRiskCDN++;
 
+      const notApplicable = isSriNotApplicable(res.hostname);
       const fid = `SRI-MISSING-${slug}`;
       if (!findingIds.has(fid)) {
         findingIds.add(fid);
         results.findings.push({
           id:          fid,
-          severity:    severityBase,
-          title:       `Missing SRI on External ${typeLabel}: ${res.hostname}`,
-          description: `The external ${typeLabel.toLowerCase()} "${shortSrc}" (hosted on ${res.hostname}) lacks a Subresource Integrity (integrity) attribute. If the CDN or third-party host is compromised, an attacker could serve malicious code to all your users.${res.isHighRiskCDN ? ` ${res.hostname} is a high-risk public CDN.` : ''}`,
+          // Evergreen/dynamic providers can't use a pinned hash — report as info,
+          // not a high-severity "missing SRI", to avoid a false positive.
+          severity:    notApplicable ? 'info' : severityBase,
+          confidence:  notApplicable ? 'possible' : undefined,
+          title:       notApplicable
+            ? `Third-Party ${typeLabel} Without SRI (SRI not supported): ${res.hostname}`
+            : `Missing SRI on External ${typeLabel}: ${res.hostname}`,
+          description: notApplicable
+            ? `The external ${typeLabel.toLowerCase()} "${shortSrc}" is served by ${res.hostname}, which delivers dynamic/evergreen content that does not support Subresource Integrity (a pinned hash would break on every vendor update). This is expected, but it means you are trusting this third party to not serve malicious code.`
+            : `The external ${typeLabel.toLowerCase()} "${shortSrc}" (hosted on ${res.hostname}) lacks a Subresource Integrity (integrity) attribute. If the CDN or third-party host is compromised, an attacker could serve malicious code to all your users.${res.isHighRiskCDN ? ` ${res.hostname} is a high-risk public CDN.` : ''}`,
           module:      'sriScanner',
           affected:    res.foundOn,
-          remediation: `Generate the integrity hash at https://www.srihash.org/ or using:
+          remediation: notApplicable
+            ? `SRI cannot be applied to this provider. Instead: confirm the integration is necessary, prefer a versioned/self-hosted copy where possible, and monitor the vendor's security advisories.`
+            : `Generate the integrity hash at https://www.srihash.org/ or using:
   openssl dgst -sha384 -binary FILE | openssl base64 -A
 Then add: integrity="sha384-<hash>" crossorigin="anonymous" to the tag.`,
           resource:    res.src,

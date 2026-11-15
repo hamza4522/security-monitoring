@@ -1,4 +1,5 @@
 const dns = require('dns').promises;
+const net = require('net');
 
 /**
  * Module 2: DNS & Email Security Assessment
@@ -161,7 +162,20 @@ async function analyzeDMARC(domain) {
 }
 
 async function checkDKIM(domain) {
-  const commonSelectors = ['default', 'google', 'k1', 'mail', 'smtp', 'email', 'dkim', 's1', 's2'];
+  // DKIM selectors are arbitrary per-sender, so this is a best-effort probe of
+  // widely-used selectors. Notably includes Microsoft 365 (selector1/selector2),
+  // Google, Fastmail (fm1-3), Mailchimp (k1/k2/k3), Postmark, SendGrid, Amazon SES.
+  const commonSelectors = [
+    'default', 'google', 'k1', 'k2', 'k3', 'mail', 'smtp', 'email', 'dkim', 's1', 's2',
+    'selector1', 'selector2',        // Microsoft 365 / Outlook
+    'fm1', 'fm2', 'fm3',             // Fastmail
+    'mandrill', 'mte1', 'mte2',      // Mailchimp Transactional / others
+    'pm', 'pm1',                      // Postmark
+    'scph', 's1024', 'sig1',         // SendGrid / various
+    'amazonses', 'ses',              // Amazon SES
+    'zoho', 'zmail',                 // Zoho
+    'protonmail', 'protonmail2', 'protonmail3',
+  ];
   const found = [];
 
   const checks = commonSelectors.map(async (selector) => {
@@ -193,21 +207,104 @@ async function checkDNSSEC(domain) {
   }
 }
 
+// ── AXFR (zone transfer) — self-contained raw DNS over TCP ────────────────────
+/**
+ * Encode a DNS QNAME (sequence of length-prefixed labels, null-terminated).
+ */
+function encodeQName(domain) {
+  const labels = domain.replace(/\.$/, '').split('.');
+  const bufs = labels.map(l => {
+    const b = Buffer.from(l, 'ascii');
+    return Buffer.concat([Buffer.from([b.length]), b]);
+  });
+  return Buffer.concat([...bufs, Buffer.from([0])]);
+}
+
+/**
+ * Attempt an AXFR against one nameserver. Returns { vulnerable, rcode, answerCount }.
+ * AXFR is a TCP-only query (type 252). A server that permits transfer replies with
+ * RCODE=0 and streams the zone (many answer records, starting/ending with SOA).
+ * A locked-down server replies REFUSED (RCODE=5) or drops the connection.
+ */
+function attemptAXFR(nsHost, domain, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (val) => { if (!settled) { settled = true; try { sock.destroy(); } catch (_) {} resolve(val); } };
+
+    // Build the AXFR query message.
+    const id = Math.floor(Math.random() * 65536);
+    const header = Buffer.alloc(12);
+    header.writeUInt16BE(id, 0);
+    header.writeUInt16BE(0x0000, 2);  // standard query, RD=0
+    header.writeUInt16BE(1, 4);       // QDCOUNT = 1
+    const qname = encodeQName(domain);
+    const qtail = Buffer.alloc(4);
+    qtail.writeUInt16BE(252, 0);      // QTYPE = AXFR
+    qtail.writeUInt16BE(1, 2);        // QCLASS = IN
+    const msg = Buffer.concat([header, qname, qtail]);
+    const framed = Buffer.concat([Buffer.from([msg.length >> 8, msg.length & 0xff]), msg]);
+
+    let buf = Buffer.alloc(0);
+    let totalAnswers = 0;
+    let firstRcode = null;
+
+    const sock = net.connect({ host: nsHost, port: 53 });
+    sock.setTimeout(timeoutMs);
+    sock.on('connect', () => sock.write(framed));
+    sock.on('data', (d) => {
+      buf = Buffer.concat([buf, d]);
+      // Parse as many length-prefixed DNS messages as are complete in the buffer.
+      while (buf.length >= 2) {
+        const len = buf.readUInt16BE(0);
+        if (buf.length < 2 + len) break;
+        const message = buf.slice(2, 2 + len);
+        buf = buf.slice(2 + len);
+        if (message.length >= 12) {
+          const flags = message.readUInt16BE(2);
+          const rcode = flags & 0x0f;
+          if (firstRcode === null) firstRcode = rcode;
+          totalAnswers += message.readUInt16BE(6); // ANCOUNT
+        }
+        // A successful AXFR returns the full zone (≥2 records: SOA … SOA).
+        if (totalAnswers >= 2) {
+          return finish({ vulnerable: true, rcode: firstRcode ?? 0, answerCount: totalAnswers });
+        }
+      }
+    });
+    sock.on('timeout', () => finish({ vulnerable: totalAnswers >= 2, rcode: firstRcode, answerCount: totalAnswers, note: 'timeout' }));
+    sock.on('error', () => finish({ vulnerable: false, rcode: firstRcode, answerCount: totalAnswers, note: 'connection error' }));
+    sock.on('close', () => finish({ vulnerable: totalAnswers >= 2, rcode: firstRcode, answerCount: totalAnswers }));
+  });
+}
+
 async function testZoneTransfer(domain, nameservers) {
-  // Zone transfer (AXFR) test - for detection only
-  // Real implementation would use dig AXFR or similar
   const results = [];
+  let vulnerable = false;
 
   for (const ns of nameservers.slice(0, 3)) {
-    results.push({
-      nameserver: ns,
-      vulnerable: false, // In real impl: attempt AXFR and check response
-      tested: true,
-      note: 'AXFR test requires dig/nslookup - implement with execCommand',
-    });
+    // Resolve the nameserver hostname to an IP (AXFR connects directly to it).
+    let nsIP = ns;
+    try {
+      const addrs = await dns.resolve4(ns.replace(/\.$/, ''));
+      nsIP = addrs[0] || ns;
+    } catch (_) { /* fall back to the hostname */ }
+
+    try {
+      const r = await attemptAXFR(nsIP, domain);
+      results.push({
+        nameserver: ns,
+        tested: true,
+        vulnerable: r.vulnerable,
+        answerRecords: r.answerCount || 0,
+        rcode: r.rcode,
+      });
+      if (r.vulnerable) vulnerable = true;
+    } catch (e) {
+      results.push({ nameserver: ns, tested: true, vulnerable: false, error: e.message });
+    }
   }
 
-  return { tested: results.length > 0, results, vulnerable: false };
+  return { tested: results.some(r => r.tested), results, vulnerable };
 }
 
 function generateDNSFindings(results) {
@@ -288,11 +385,12 @@ function generateDNSFindings(results) {
   if (!results.dkim.configured && hasMailServers) {
     findings.push({
       id: 'DNS-004',
-      severity: 'medium',
-      title: 'No DKIM Records Found',
-      description: 'No DKIM signing records detected for common selectors on an active email domain.',
+      severity: 'low',
+      confidence: 'possible',
+      title: 'No DKIM Records Found (Common Selectors)',
+      description: 'No DKIM signing records were found for a list of common selectors on this active email domain. NOTE: DKIM selectors are arbitrary and provider-specific — a custom selector would not be detected by this probe, so this is not conclusive. Verify manually before acting.',
       module: 'dnsAssessment',
-      remediation: 'Configure DKIM signing in your email provider and publish the public key as a TXT record.',
+      remediation: 'Confirm whether DKIM is configured with your email provider. If not, enable DKIM signing and publish the public key as a TXT record at <selector>._domainkey.',
     });
   }
 

@@ -610,18 +610,28 @@ async function checkAPISecurity(baseUrl, onProgress, results) {
     const apiPaths = ['/api/login', '/api/v1/login', '/api/auth/login', '/login'];
     for (const ap of apiPaths) {
       const r1 = await safeFetch(`${baseUrl}${ap}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"u":"x","p":"x"}', timeout: 4000 });
-      if (r1.status !== 404) {
+      // A non-404 is not enough: many sites return a 200 catch-all page for any
+      // path. Only treat this as a real auth endpoint when the response actually
+      // behaves like one — a JSON API response or an auth-related error status
+      // with auth keywords in the body — otherwise it's a soft-404 false positive.
+      const ctype = (r1.headers['content-type'] || '').toLowerCase();
+      const body  = (r1.body || '').toLowerCase();
+      const looksLikeAuthEndpoint =
+        [400, 401, 403, 422].includes(r1.status) ||
+        (r1.status === 200 && (ctype.includes('json') ||
+          /invalid (credentials|password|username)|unauthori[sz]ed|login failed|"token"|"access_token"/.test(body)));
+      if (looksLikeAuthEndpoint) {
         const rateLimitHeaders = ['x-ratelimit-limit', 'x-ratelimit-remaining', 'retry-after', 'x-rate-limit'];
         const hasRateLimit = rateLimitHeaders.some(h => r1.headers[h]);
         if (!hasRateLimit) {
           results.findings.push({
             id: `NUCLEI-RATELIMIT-${ap.replace(/\//g, '-')}`,
-            severity: 'medium',
-            title: `No Rate Limiting on: ${ap}`,
-            description: `The ${ap} endpoint does not return rate-limiting headers. Without rate limiting, brute-force and credential stuffing attacks are unrestricted.`,
+            severity: 'low',
+            title: `No Rate-Limit Headers on: ${ap}`,
+            description: `The ${ap} endpoint responds like an authentication endpoint but returns no rate-limiting headers. This is a weak signal — the endpoint may still be rate-limited upstream (e.g. by a WAF/CDN) — but it is worth verifying that brute-force and credential-stuffing protection is in place.`,
             module: 'nucleiChecks',
             affected: baseUrl + ap,
-            remediation: 'Implement rate limiting (e.g., 5 req/min per IP). Return X-RateLimit-Limit headers. Use CAPTCHA on repeated failures.',
+            remediation: 'Verify rate limiting on authentication endpoints (e.g., 5 req/min per IP). Optionally expose X-RateLimit-* headers. Use CAPTCHA/lockout on repeated failures.',
           });
         }
         break;

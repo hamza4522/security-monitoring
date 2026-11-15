@@ -121,8 +121,8 @@ async function runVulnAssessment(domain, onProgress) {
   // ── 1. Security Headers ──────────────────────────────────────────────────
   onProgress('Checking HTTP security headers...');
   const secHeaders = [
-    { name: 'Strict-Transport-Security', sev: 'high',   desc: 'HSTS not set — browsers can downgrade to HTTP', fix: 'Add: Strict-Transport-Security: max-age=63072000; includeSubDomains; preload' },
-    { name: 'Content-Security-Policy',   sev: 'high',   desc: 'No CSP — XSS/data injection unmitigated', fix: "Add: Content-Security-Policy: default-src 'self'" },
+    { name: 'Strict-Transport-Security', sev: 'medium', desc: 'HSTS not set — browsers can downgrade to HTTP', fix: 'Add: Strict-Transport-Security: max-age=63072000; includeSubDomains; preload' },
+    { name: 'Content-Security-Policy',   sev: 'medium', desc: 'No CSP — XSS/data injection unmitigated', fix: "Add: Content-Security-Policy: default-src 'self'" },
     { name: 'X-Frame-Options',           sev: 'medium', desc: 'Clickjacking protection missing', fix: 'Add: X-Frame-Options: DENY' },
     { name: 'X-Content-Type-Options',    sev: 'medium', desc: 'MIME-sniffing not prevented', fix: 'Add: X-Content-Type-Options: nosniff' },
     { name: 'Referrer-Policy',           sev: 'low',    desc: 'Referrer policy not set', fix: 'Add: Referrer-Policy: strict-origin-when-cross-origin' },

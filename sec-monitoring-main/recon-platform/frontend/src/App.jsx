@@ -321,6 +321,8 @@ function DashboardView({ scans, onStartScan, onSelectScan, domainInputRef }) {
     { key: "nessusScanner",        label: "Nessus Scan",       icon: "🔬", category: "Vulnerability" },
     { key: "cookieSecurityScanner",label: "Cookie Security",   icon: "🍪", category: "Vulnerability" },
     { key: "sriScanner",           label: "SRI Check",         icon: "🔗", category: "Vulnerability" },
+    { key: "gitExposureScanner",   label: "Exposed .git",      icon: "🐙", category: "Vulnerability" },
+    { key: "rceChecker",           label: "RCE Check",         icon: "💥", category: "Vulnerability" },
     { key: "jsSecretScanner",      label: "JS Secrets",        icon: "🔑", category: "Intelligence" },
     { key: "subdomainTakeover",    label: "Subdomain Takeover",icon: "🚩", category: "Intelligence" },
     { key: "cveEnrichment",        label: "CVE Enrichment",    icon: "📋", category: "Intelligence" },
@@ -933,6 +935,8 @@ function ModulePipeline({ modules }) {
     { key: "nessusScanner",        label: "Nessus Scan" },
     { key: "cookieSecurityScanner",label: "Cookies" },
     { key: "sriScanner",           label: "SRI Scan" },
+    { key: "gitExposureScanner",   label: "Exposed .git" },
+    { key: "rceChecker",           label: "RCE Check" },
   ];
   // Only show modules that were actually selected (not skipped)
   const activeModules = MODULES.filter(m => modules?.[m.key]?.status !== "skipped");
