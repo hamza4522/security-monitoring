@@ -29,6 +29,10 @@ Built with **React + Node.js** · Styled with a **Datadog-inspired dark theme** 
   - [Retire.js Checker](#15--retirejs-vulnerable-library-checker)
   - [API Discovery](#16--public-api-discovery)
   - [Nessus-Style Scanner](#17--nessus-style-vulnerability-scanner)
+  - [Cookie Security Scanner](#18--cookie-security-scanner)
+  - [SRI Scanner](#19--sri-subresource-integrity-scanner)
+  - [Exposed Git Repository](#20--exposed-git-repository-scanner)
+  - [Remote Command Execution](#21--remote-command-execution-check)
 - [Scan Modes](#-scan-modes)
 - [Risk Scoring](#-risk-scoring)
 - [Quick Start](#-quick-start)
@@ -61,6 +65,10 @@ Built with **React + Node.js** · Styled with a **Datadog-inspired dark theme** 
 | 15 | 💊 Retire.js Checker | Flags vulnerable JavaScript libraries via Retire.js database |
 | 16 | 🔗 API Discovery | Finds OpenAPI, GraphQL, REST, SOAP, and JS-extracted endpoints |
 | 17 | 🔬 Nessus-Style Scanner | 50+ agentless plugin checks with CVSS scores and CVE references |
+| 18 | 🍪 Cookie Security Scanner | Per-cookie audit of Secure/HttpOnly/SameSite/prefix flags across paths |
+| 19 | 🔗 SRI Scanner | Flags cross-origin scripts/styles loaded without Subresource Integrity |
+| 20 | 🐙 Exposed Git Repository | Detects a dumpable `.git`/VCS dir and proves impact (remote, history, file list) |
+| 21 | 💥 Remote Command Execution | Confirms OS command injection via an execution-vs-reflection discriminator |
 
 ---
 
@@ -68,7 +76,7 @@ Built with **React + Node.js** · Styled with a **Datadog-inspired dark theme** 
 
 1. You enter a target domain (e.g. `example.com`)
 2. Choose **Full Scan** (domain + all subdomains) or **Single Domain** (fast, focused)
-3. The backend pipeline runs all 17 modules **concurrently** where possible
+3. The backend pipeline runs all 21 modules **concurrently** where possible
 4. Live progress streams to your browser via **WebSocket**
 5. Findings are aggregated, scored, and displayed with full remediation guidance
 6. Export results as **PDF**, **Markdown**, or **JSON**
@@ -513,6 +521,62 @@ SMB (EternalBlue — CVE-2017-0144), RDP (BlueKeep — CVE-2019-0708), VNC, Redi
 
 ---
 
+### 18. 🍪 Cookie Security Scanner
+
+**What it does:** Collects every `Set-Cookie` header across several probed paths and audits each cookie individually.
+
+**How it works:**
+- Reads cookies via `getSetCookie()` so multiple cookies are parsed separately (not collapsed into one string)
+- Flags missing `Secure` / `HttpOnly` / `SameSite` attributes, `SameSite=None` without `Secure`, overly broad `Domain`, excessive lifetime, oversized cookies, and `__Host-`/`__Secure-` prefix violations
+- Rates sensitive cookies (session/auth/token names) higher than generic cookies
+
+**Output:** Per-cookie finding list with the exact attribute that is missing or misconfigured, plus remediation.
+
+---
+
+### 19. 🔗 SRI (Subresource Integrity) Scanner
+
+**What it does:** Finds cross-origin `<script>` and `<link rel=stylesheet>` resources loaded without an `integrity` hash.
+
+**How it works:**
+- Extracts external resources from the homepage and linked pages (same-origin resources are skipped — SRI only matters cross-origin)
+- Flags missing `integrity`, `integrity` without `crossorigin`, and malformed hashes
+- **Knows which providers can't use SRI by design** (Google Fonts, Google Analytics/GTM, Stripe.js, Facebook SDK, polyfill.io, FontAwesome kits) and reports those at info level with correct guidance instead of a false "add a hash" finding
+
+**Output:** Resource list with host, CDN risk, and per-resource remediation.
+
+---
+
+### 20. 🐙 Exposed Git Repository Scanner
+
+**What it does:** Detects a publicly exposed/dumpable `.git` directory (the classic "git-dumper" exposure) and proves impact — without exfiltrating the whole repo.
+
+**How it works:**
+- Confirms the repo is real (not a soft-404) by **validating content**: `.git/HEAD` format, `.git/config` `[core]` section, and the `.git/index` `DIRC` magic bytes
+- Gathers bounded evidence: remote URL(s) from config, commit history + committer emails from `.git/logs/HEAD`, and a **sample of recoverable file paths parsed from the index** (proving the full tree is reconstructable)
+- Separately flags credentials embedded in a remote URL, and related VCS exposure (`.svn` / `.hg` / `.bzr`) with strict, HTML-rejecting validators
+
+**Output:** A `critical` finding with the confirming artifacts, remote(s), committer identities, and a sample recovered file list. Remediation includes blocking `.git` at the web server **and rotating any committed secrets** (history is already exposed).
+
+> Scope: this is detection with a bounded proof-of-concept. It does **not** recursively download every object to rebuild the working tree — detection + evidence is enough to make the finding actionable.
+
+---
+
+### 21. 💥 Remote Command Execution Check
+
+**What it does:** Confirms OS command injection / RCE on injectable parameters — safely, with no false positives and no shell dropped.
+
+**How it works:**
+- Injects a benign payload that embeds shell arithmetic plus a random nonce, e.g. `;echo <nonce>$((9*9))`
+- Uses an **execution-vs-reflection discriminator**: a finding is raised only when the response contains the **computed** marker (`<nonce>81`) and *not* the literal expression — proving the server executed the command rather than merely reflecting input
+- Covers Unix (`confirmed`) and Windows `cmd` (`likely`); runs only a benign `echo`/arithmetic — it never reads sensitive files, drops a webshell, or opens a reverse shell
+
+**Output:** A `critical` finding with the proving payload and marker, OWASP A03 / CWE-78 tags, and remediation (no shell/OS execution on user input; rotate reachable secrets).
+
+> Scope: a safe proof-of-concept detector for authorized assessment — it confirms the vulnerability, it does not weaponize it.
+
+---
+
 ## 🎯 Scan Modes
 
 | Mode | What Gets Scanned | Best For | Typical Duration |
@@ -583,7 +647,7 @@ recon-platform/
 ├── backend/
 │   ├── server.js                   # Express + WebSocket server, scan persistence
 │   ├── routes/
-│   │   ├── scan.js                 # Pipeline orchestrator — runs all 17 modules
+│   │   ├── scan.js                 # Pipeline orchestrator — runs all 21 modules
 │   │   └── report.js               # PDF / Markdown / JSON report generation
 │   ├── modules/
 │   │   ├── assetDiscovery.js       # Subdomain enum, live probing, CDN detection
@@ -602,7 +666,11 @@ recon-platform/
 │   │   ├── cveEnrichment.js        # NIST NVD CVE lookup by detected version
 │   │   ├── retireJsChecker.js      # Retire.js vulnerable library matching
 │   │   ├── apiDiscovery.js         # OpenAPI, GraphQL, REST, WSDL, JS endpoints
-│   │   └── nessusScanner.js        # 50+ agentless Nessus-style plugin checks
+│   │   ├── nessusScanner.js        # 50+ agentless Nessus-style plugin checks
+│   │   ├── cookieSecurityScanner.js# Per-cookie flag/attribute audit
+│   │   ├── sriScanner.js           # Subresource Integrity audit (SRI-aware)
+│   │   ├── gitExposureScanner.js   # Exposed .git/VCS detection + proof-of-impact
+│   │   └── rceChecker.js           # RCE confirmation (execution-vs-reflection)
 │   └── utils/
 │       ├── exec.js                 # CLI tool runner with timeout
 │       ├── riskScoring.js          # 0–100 score + A–F grade calculator

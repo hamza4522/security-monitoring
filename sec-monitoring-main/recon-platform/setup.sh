@@ -78,7 +78,7 @@ cd backend && npm install && cd ..
 cd frontend && npm install && cd ..
 
 echo ""
-echo "  [+] Tool availability check:"
+echo "  [+] Optional external tool availability (all have pure-Node fallbacks):"
 for tool in nmap subfinder httpx dnsx nuclei; do
   if command -v $tool &>/dev/null; then
     echo "      ✓  $tool"
@@ -86,6 +86,10 @@ for tool in nmap subfinder httpx dnsx nuclei; do
     echo "      ✗  $tool (not found — will use fallback)"
   fi
 done
+echo ""
+echo "  [i] Core agentless checks need NO external tools — they are pure Node.js:"
+echo "      SSL/TLS protocol enumeration, DNS AXFR zone-transfer test,"
+echo "      exposed .git/VCS detection, and RCE confirmation all run out of the box."
 
 echo ""
 echo "  ─────────────────────────────────────────────"
